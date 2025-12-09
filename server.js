@@ -44,10 +44,33 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
       const atual = await pool.query('SELECT * FROM public."PlanejamentoAtividade" WHERE id = $1', [parseInt(id)]);
       if (atual.rows.length > 0) {
         const total_planejado = Number(atual.rows[0].tempo_planejado || 0);
-        // Converter de segundos para horas
-        const tempo_executado_horas = Number(data.tempo_executado || atual.rows[0].tempo_executado || 0) / 3600;
+        // Frontend envia horas; não converter de segundos aqui
+        const tempo_executado_horas = Number(data.tempo_executado ?? atual.rows[0].tempo_executado ?? 0);
         data.tempo_executado = tempo_executado_horas;
         data.sobra_real = total_planejado - tempo_executado_horas;
+      }
+    }
+
+    // Fallback: se marcou concluído sem ação 'finalizar', calcular tempo_executado pela diferença de datas
+    if (!data.acao && (data.status === 'concluido' || data.status === 'finalizado')) {
+      try {
+        const atual = await pool.query('SELECT * FROM public."PlanejamentoAtividade" WHERE id = $1', [parseInt(id)]);
+        if (atual.rows.length > 0) {
+          const row = atual.rows[0];
+          const inicio = row.inicio_real ? new Date(row.inicio_real) : null;
+          const termino = row.termino_real ? new Date(row.termino_real) : new Date();
+          if (inicio) {
+            const diffHoras = (termino - inicio) / 3600000; // ms -> horas
+            const horas = Math.max(0, diffHoras);
+            const total_planejado = Number(row.tempo_planejado || 0);
+            data.tempo_executado = Number(horas.toFixed(4));
+            data.sobra_real = total_planejado - data.tempo_executado;
+            data.termino_real = termino.toISOString();
+            data.status = 'concluido';
+          }
+        }
+      } catch (e) {
+        console.warn('[BACKEND][FALLBACK Atividade] Erro ao calcular tempo_executado por datas:', e.message);
       }
     }
 
@@ -1849,15 +1872,14 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
       console.log('[BACKEND] Ação: INICIAR - status:', status, 'inicio_real (Brasília):', inicio_real);
     }
     if (dados.acao === 'finalizar') {
-      status = 'finalizado';
+      status = 'concluido';
       // Ajusta para horário de Brasília (UTC-3)
       const now = new Date();
       const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
       termino_real = brasiliaDate.toISOString();
       const total_planejado = Number(atual.tempo_planejado || 0);
-      // Converter sempre de segundos para horas
-      tempo_executado = Number(dados.tempo_executado || atual.tempo_executado || 0);
-      tempo_executado = tempo_executado / 3600;
+      // Frontend já envia horas; não converter aqui
+      tempo_executado = Number(dados.tempo_executado ?? atual.tempo_executado ?? 0);
       sobra_real = total_planejado - tempo_executado;
       dados.tempo_executado = tempo_executado;
       console.log('[BACKEND] Ação: FINALIZAR - status:', status, 'termino_real (Brasília):', termino_real, 'sobra_real:', sobra_real, 'tempo_executado:', tempo_executado);
@@ -1917,18 +1939,31 @@ app.put('/api/planejamento-documentos/:id', async (req, res) => {
       console.log('[BACKEND] Ação: INICIAR - status:', status, 'inicio_real:', inicio_real);
     }
     if (dados.acao === 'finalizar') {
-      status = 'finalizado';
+      status = 'concluido';
       // Horário de Brasília (UTC-3) com hora completa
       const now = new Date();
       const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
       termino_real = brasiliaDate.toISOString();
       const total_planejado = Number(atual.tempo_planejado || 0);
-      // Converter sempre de segundos para horas (igual PlanejamentoAtividade)
-      let tempo_executado = Number(dados.tempo_executado || atual.tempo_executado || 0);
-      tempo_executado = tempo_executado / 3600;
+      // Frontend envia horas; não dividir por 3600
+      let tempo_executado = Number(dados.tempo_executado ?? atual.tempo_executado ?? 0);
       sobra_real = total_planejado - tempo_executado;
       dados.tempo_executado = tempo_executado;
       console.log('[BACKEND] Ação: FINALIZAR - status:', status, 'termino_real:', termino_real, 'sobra_real:', sobra_real, 'tempo_executado:', tempo_executado);
+    }
+    // Fallback: se concluir sem acao finalizar, calcular tempo por diferença de datas
+    if (!dados.acao && (status === 'concluido' || status === 'finalizado')) {
+      const inicio = atual.inicio_real ? new Date(atual.inicio_real) : null;
+      const terminoCalc = atual.termino_real ? new Date(atual.termino_real) : new Date();
+      if (inicio) {
+        const diffHoras = (terminoCalc - inicio) / 3600000;
+        const horas = Math.max(0, diffHoras);
+        const total_planejado = Number(atual.tempo_planejado || 0);
+        sobra_real = total_planejado - Number(horas.toFixed(4));
+        dados.tempo_executado = Number(horas.toFixed(4));
+        termino_real = terminoCalc.toISOString();
+        status = 'concluido';
+      }
     }
     const result = await pool.query(
       `UPDATE "PlanejamentoDocumento" SET

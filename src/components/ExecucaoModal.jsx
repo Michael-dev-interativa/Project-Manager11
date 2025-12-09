@@ -57,11 +57,17 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
       if (atividade.atividade_id || atividade.tipo === 'atividade') {
         registroAtual = await PlanejamentoAtividade.filter ? await PlanejamentoAtividade.filter({ id: atividade.id }) : atividade;
         console.log('[FINALIZAR] Registro atual PlanejamentoAtividade:', registroAtual);
+        // Calcular horas executadas com fallback: timer local OU diferença entre termino e inicio_real
+        // Persistir o tempo do timer do modal como fonte de verdade
+        const horasTimer = Number((segundos / 3600).toFixed(4));
+        const horasPersistir = horasTimer > 0 ? horasTimer : 0;
         const payload = {
           acao: 'finalizar',
-          status: 'concluido',
+          // Alinhar com backend que usa 'finalizado'
+          status: 'finalizado',
           termino_real: new Date().toISOString(),
-          tempo_executado: segundos,
+          // Persistir em horas do timer
+          tempo_executado: horasPersistir,
           executor_principal: registroAtual.executor_principal || '',
         };
         console.log('[FINALIZAR] Payload PlanejamentoAtividade:', payload);
@@ -80,11 +86,13 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
       } else if (atividade.documento_id || atividade.tipo === 'documento') {
         registroAtual = await PlanejamentoDocumento.filter ? await PlanejamentoDocumento.filter({ id: atividade.id }) : atividade;
         console.log('[FINALIZAR] Registro atual PlanejamentoDocumento:', registroAtual);
+        const horasTimer = Number((segundos / 3600).toFixed(4));
+        const horasPersistir = horasTimer > 0 ? horasTimer : 0;
         const payload = {
           acao: 'finalizar',
-          status: 'concluido',
+          status: 'finalizado',
           termino_real: new Date().toISOString(),
-          tempo_executado: segundos,
+          tempo_executado: horasPersistir,
           executor_principal: registroAtual.executor_principal || '',
         };
         console.log('[FINALIZAR] Payload PlanejamentoDocumento:', payload);
@@ -101,19 +109,24 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
           return;
         }
       }
-      // Buscar status atualizado do backend após finalizar
-      if (onFinish) {
-        try {
-          const response = await fetch(`http://localhost:3001/api/planejamento-atividades/${atividade.id}`);
-          const atualizado = await response.json();
-          onFinish(atualizado);
-        } catch (e) {
-          onFinish({ ...atividade, status: 'concluido' });
+      // Buscar status atualizado do backend após finalizar e disparar atualizações
+      try {
+        if (atividade.tipo === 'documento' || atividade.documento_id) {
+          // Alguns backends não expõem GET /:id; usar filtro por id
+          const response = await fetch(`http://localhost:3001/api/planejamento-documentos?id=${atividade.id}`);
+          const data = await response.json();
+          const atualizado = Array.isArray(data) ? data[0] : data;
+          onFinish && onFinish(atualizado || { ...atividade, status: 'finalizado' });
+        } else {
+          const response = await fetch(`http://localhost:3001/api/planejamento-atividades?id=${atividade.id}`);
+          const data = await response.json();
+          const atualizado = Array.isArray(data) ? data[0] : data;
+          onFinish && onFinish(atualizado || { ...atividade, status: 'finalizado' });
         }
+      } catch (e) {
+        onFinish && onFinish({ ...atividade, status: 'finalizado' });
       }
-      if (onReload) onReload();
-      // Reload automático após finalizar
-      setTimeout(() => window.location.reload(), 100);
+      onReload && onReload();
     } catch (err) {
       console.error('Erro ao finalizar atividade:', err);
     }

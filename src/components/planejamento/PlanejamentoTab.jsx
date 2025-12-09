@@ -6,13 +6,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, User, Search, Filter, Edit, Trash2, CheckCircle, AlertCircle, TrendingUp, Folder, FileText } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Atividade, Documento, PlanejamentoAtividade, PlanejamentoDocumento, Execucao, SobraUsuario, Usuario } from "@/entities/all"; // REMOVED Analitico
+import { Atividade, Documento, PlanejamentoAtividade, PlanejamentoDocumento, Execucao, SobraUsuario, Usuario } from "@/entities/all";
 import { format, parseISO, isAfter, isBefore, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ActivityTimerContext } from '../contexts/ActivityTimerContext';
 import { delay, retryWithBackoff, debounce, throttle } from '../utils/apiUtils';
 import PlanejamentoAtividadeModal from '../empreendimento/PlanejamentoAtividadeModal';
 import { DateCalculator } from '../utils/DateCalculator';
+import { useExecucaoModal } from '../contexts/ExecucaoContext';
 
 import CurvaSPlanejamento from './CurvaSPlanejamento';
 import ExecutorSelector from './ExecutorSelector';
@@ -53,6 +54,7 @@ export default function PlanejamentoTab({ empreendimentoId }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [planningError, setPlanningError] = useState(null);
   const { refreshTrigger } = useContext(ActivityTimerContext);
+  const { setModalExecucao } = useExecucaoModal();
 
   // Função para enriquecer planejamentos (placeholder, ajuste conforme necessário)
   const enrichPlanejamentos = useCallback(async () => {
@@ -65,10 +67,22 @@ export default function PlanejamentoTab({ empreendimentoId }) {
       // Enriquecer cada planejamento com dados úteis para exibição
       const documentosIds = [...new Set(planejamentosDoc.map(p => p.documento_id).filter(Boolean))];
       let documentosMap = {};
+      let tempoExecutadoPorDocumento = {};
       if (documentosIds.length > 0) {
         try {
           const documentos = await Documento.filter({ id: { $in: documentosIds } });
           documentosMap = (documentos || []).reduce((acc, doc) => { acc[doc.id] = doc; return acc; }, {});
+        } catch { }
+        // Também buscar atividades por documento_id e somar tempo_executado
+        try {
+          const atividades = await Atividade.filter({ documento_id: { $in: documentosIds } });
+          tempoExecutadoPorDocumento = (atividades || []).reduce((acc, a) => {
+            const docId = a.documento_id;
+            const v = Number(a.tempo_executado || 0);
+            if (!acc[docId]) acc[docId] = 0;
+            if (!Number.isNaN(v)) acc[docId] += v;
+            return acc;
+          }, {});
         } catch { }
       }
       const enriched = await Promise.all(
@@ -96,7 +110,41 @@ export default function PlanejamentoTab({ empreendimentoId }) {
             ...plano,
             tipo_planejamento: 'documento',
             executorPrincipalObj,
-            tempoExecutado: plano.tempoExecutado || 0,
+            // Preferir sempre o valor do banco: tempo_executado
+            // fallback para campos alternativos caso o backend não envie
+            tempoExecutado: (() => {
+              // 1) Preferir tempo_executado da tabela Atividade, se for um planejamento de atividade (quando disponível)
+              // 2) Para planejamento de documento, preferir documento.tempo_executado
+              // 3) Depois, usar plano.tempo_executado
+              // 4) Fallback para plano.tempoExecutado
+              let v = null;
+              // Se vier atividade vinculada neste plano (em cenários mistos), usar atividade.tempo_executado
+              if (plano.atividade && plano.atividade.tempo_executado != null) {
+                const n = Number(plano.atividade.tempo_executado);
+                if (!Number.isNaN(n)) v = n;
+              }
+              // Preferir documento.tempo_executado quando disponível
+              if (v == null && documentosMap[plano.documento_id]?.tempo_executado != null) {
+                const n = Number(documentosMap[plano.documento_id].tempo_executado);
+                if (!Number.isNaN(n)) v = n;
+              }
+              // Se o documento não tiver um campo próprio, usar a soma das atividades do documento
+              if (v == null && tempoExecutadoPorDocumento[plano.documento_id] != null) {
+                const n = Number(tempoExecutadoPorDocumento[plano.documento_id]);
+                if (!Number.isNaN(n)) v = n;
+              }
+              // Planejamento próprio
+              if (v == null && plano.tempo_executado != null) {
+                const n = Number(plano.tempo_executado);
+                if (!Number.isNaN(n)) v = n;
+              }
+              // Fallback
+              if (v == null && plano.tempoExecutado != null) {
+                const n = Number(plano.tempoExecutado);
+                if (!Number.isNaN(n)) v = n;
+              }
+              return v != null ? v : 0;
+            })(),
             horas_por_dia: horasPorDia,
             subdisciplinas,
             documento: documentosMap[plano.documento_id] || null,
@@ -302,6 +350,14 @@ export default function PlanejamentoTab({ empreendimentoId }) {
         if (!canStart) {
           alert('Não é possível iniciar esta atividade. Existem predecessoras não concluídas.');
           return;
+        }
+      }
+      // Bloquear conclusão direta: abrir modal de execução para finalizar com tempo real
+      if (newStatus === 'concluido') {
+        if (setModalExecucao) {
+          const atividade = { ...plano, tipo: 'atividade' };
+          setModalExecucao(atividade);
+          return; // não atualiza status diretamente
         }
       }
 
@@ -613,7 +669,15 @@ export default function PlanejamentoTab({ empreendimentoId }) {
           </div>
           <div className="flex items-center gap-1.5 font-medium text-blue-600">
             <TrendingUp className="w-4 h-4" />
-            <span>{plano.tempoExecutado.toFixed(1)}h realizadas</span>
+            <span>{(() => {
+              const v = Number(
+                plano.tempo_executado != null ? plano.tempo_executado : plano.tempoExecutado
+              );
+              if (Number.isNaN(v)) return '0.0h realizadas';
+              if (v > 0 && v < (1 / 60)) return `${(v * 3600).toFixed(0)}s realizadas`;
+              if (v < 1) return `${(v * 60).toFixed(1)}min realizadas`;
+              return `${v.toFixed(1)}h realizadas`;
+            })()}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <User className="w-4 h-4 text-gray-500" />

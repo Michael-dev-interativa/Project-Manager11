@@ -316,9 +316,52 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
           </button>
         </div>
       </div>
-      {/* Subinfo: horas detalhadas */}
+      {/* Subinfo: horas detalhadas (sempre mostrar planejado vs executado) */}
       <div className="text-xs text-gray-500 mb-1" style={{ textAlign: 'right' }}>
-        {plano.horas_executadas !== undefined && plano.horas_planejadas !== undefined ? `(${plano.horas_executadas.toFixed(1)}h / ${plano.horas_planejadas.toFixed(1)}h)` : ''}
+        {(() => {
+          const planejadas = typeof plano.horas_planejadas === 'number'
+            ? plano.horas_planejadas
+            : (typeof plano.tempo_planejado === 'number' ? plano.tempo_planejado : null);
+
+          // executadas: preferir valor da tabela Atividade (plano.atividade.tempo_executado)
+          // depois valor do planejamento (tempo_executado)
+          // fallback: horas_executadas, tempoExecutado
+          let executadas = null;
+          // aceitar número ou string numérica
+          if (plano?.atividade && plano.atividade.tempo_executado != null) {
+            const v = Number(plano.atividade.tempo_executado);
+            if (!Number.isNaN(v)) executadas = v;
+          }
+          if (plano.tempo_executado != null) {
+            const v = Number(plano.tempo_executado);
+            if (!Number.isNaN(v)) executadas = v;
+          } else if (plano.horas_executadas != null) {
+            const v = Number(plano.horas_executadas);
+            if (!Number.isNaN(v)) executadas = v;
+          } else if (plano.tempoExecutado != null) {
+            const v = Number(plano.tempoExecutado);
+            if (!Number.isNaN(v)) executadas = v;
+          }
+          // Se ainda vier 0 e existir contador local de segundos no modal (não disponível aqui), manter como 0.0h.
+          const execNum = executadas != null ? Number(executadas) : 0;
+          const fmt = (v) => {
+            const n = Number(v);
+            if (Number.isNaN(n)) return '0.0h';
+            // Exibir em minutos para <1h e >=1min; em segundos para <1min
+            if (n > 0 && n < (1 / 60)) return `${(n * 3600).toFixed(0)}s`;
+            if (n < 1) return `${(n * 60).toFixed(1)}min`;
+            return `${n.toFixed(1)}h`;
+          };
+          if (planejadas != null) {
+            const plannedTxt = (() => {
+              const pn = Number(planejadas);
+              if (Number.isNaN(pn)) return '0.0h';
+              return pn < 1 ? `${(pn * 60).toFixed(1)}min` : `${pn.toFixed(1)}h`;
+            })();
+            return `(${fmt(execNum)} / ${plannedTxt})`;
+          }
+          return `(${fmt(execNum)})`;
+        })()}
       </div>
       {/* Executor */}
       <div className="flex items-center text-xs text-gray-700 mb-2">
@@ -328,22 +371,73 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
         {executorMap?.[plano.executor_principal]?.nome || plano?.executor?.nome || 'Sem Executor'}
       </div>
       {/* Botão Iniciar */}
-      <button
-        className={`w-full ${localStatus === 'concluido' ? 'bg-gray-300 cursor-not-allowed text-gray-600' : 'bg-green-600 hover:bg-green-700 text-white'} rounded font-semibold py-1 flex items-center justify-center gap-2 text-sm`}
-        title={localStatus === 'concluido' ? 'Atividade concluída' : 'Iniciar atividade'}
-        disabled={localStatus === 'concluido'}
-        onClick={() => {
-          if (localStatus === 'concluido') return;
-          if (typeof onStart === 'function') {
-            onStart(plano);
-          } else {
-            alert('Iniciar atividade: ' + displayName);
-          }
-        }}
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
-        {localStatus === 'concluido' ? 'Concluída' : 'Iniciar'}
-      </button>
+      {localStatus === 'nao_iniciado' ? (
+        <button
+          className={`w-full bg-green-600 hover:bg-green-700 text-white rounded font-semibold py-1 flex items-center justify-center gap-2 text-sm`}
+          title="Iniciar atividade"
+          onClick={() => {
+            if (typeof onStart === 'function') {
+              onStart(plano);
+            } else {
+              alert('Iniciar atividade: ' + displayName);
+            }
+          }}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
+          Iniciar
+        </button>
+      ) : (
+        <div className="w-full bg-gray-100 text-gray-800 rounded font-semibold py-2 px-3 flex items-center justify-between text-sm border border-gray-200">
+          <span className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+            {localStatus === 'concluido' ? 'Concluída' : 'Em Andamento'}
+          </span>
+          {(() => {
+            const planejadas = typeof plano.horas_planejadas === 'number' ? plano.horas_planejadas : (typeof plano.tempo_planejado === 'number' ? plano.tempo_planejado : null);
+            // Prioriza exatamente o valor do banco
+            const executadasBanco = (() => {
+              // Preferir tempo_executado da tabela Atividade, se disponível
+              if (plano?.atividade && plano.atividade.tempo_executado != null) {
+                const v = Number(plano.atividade.tempo_executado);
+                return Number.isNaN(v) ? null : v;
+              }
+              if (plano.tempo_executado != null) {
+                const v = Number(plano.tempo_executado);
+                return Number.isNaN(v) ? null : v;
+              }
+              return null;
+            })();
+            const executadasFallback = (
+              (() => {
+                if (plano.horas_executadas != null) {
+                  const v = Number(plano.horas_executadas);
+                  return Number.isNaN(v) ? null : v;
+                }
+                if (plano.tempoExecutado != null) {
+                  const v = Number(plano.tempoExecutado);
+                  return Number.isNaN(v) ? null : v;
+                }
+                return null;
+              })()
+            );
+            const executadas = executadasBanco != null ? executadasBanco : (executadasFallback != null ? executadasFallback : 0);
+            const fmtExec = (v) => {
+              const n = Number(v);
+              if (Number.isNaN(n)) return '0.0h';
+              if (n > 0 && n < (1 / 60)) return `${(n * 3600).toFixed(0)}s`;
+              if (n < 1) return `${(n * 60).toFixed(1)}min`;
+              return `${n.toFixed(1)}h`;
+            };
+            const fmtPlan = (v) => {
+              const n = Number(v);
+              if (Number.isNaN(n)) return '0.0h';
+              return n < 1 ? `${(n * 60).toFixed(1)}min` : `${n.toFixed(1)}h`;
+            };
+            const texto = planejadas != null ? `${fmtExec(executadas)} / ${fmtPlan(planejadas)}` : `${fmtExec(executadas)}`;
+            return <span className="text-xs font-normal text-gray-600">{texto}</span>;
+          })()}
+        </div>
+      )}
     </div>
   )
 };
@@ -916,11 +1010,17 @@ function CalendarioPlanejamento({ usuarios, disciplinas, onRefresh, isDashboardR
       const atividade = { ...plano, tipo: plano.tipo_planejamento || (plano.documento ? 'documento' : 'atividade') };
       await iniciarExecucao(atividade);
       if (setModalExecucao) setModalExecucao(atividade);
+      // Atualiza cartões do calendário imediatamente
+      if (typeof triggerUpdate === 'function') {
+        triggerUpdate();
+      }
+      // Recarrega dados do calendário para refletir status/tempo
+      loadCalendarData(filters.user);
     } catch (err) {
       console.error('Erro ao iniciar execução:', err);
       alert('Erro ao iniciar: ' + (err?.message || 'tente novamente'));
     }
-  }, [setModalExecucao]);
+  }, [setModalExecucao, triggerUpdate, loadCalendarData, filters.user]);
 
   // **NOVO**: Função para reprogramar atividade
   const handleReprogramarAtividade = useCallback(async (atividadeId, novaDataInicio, executorEmail) => {
