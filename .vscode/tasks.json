@@ -1,0 +1,33 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Compile React Project",
+			"type": "shell",
+			"command": "npm run build",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run React App",
+			"type": "shell",
+			"command": "npm start",
+			"args": [],
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Iniciar backend corrigido",
+			"type": "shell",
+			"command": "npm run server"
+		},
+		{
+			"label": "Instalar react-beautiful-dnd",
+			"type": "shell",
+			"command": "npm install react-beautiful-dnd",
+			"isBackground": false
+		}
+	]
+}

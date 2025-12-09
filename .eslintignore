@@ -1,0 +1,9 @@
+# Ignore backend / server-side code that lives under src
+src/entities/**
+# Ignore any standalone server scripts
+server.js
+start-server.js
+Project.py
+# Optional: ignore build and node_modules
+build/
+node_modules/
