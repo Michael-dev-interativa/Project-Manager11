@@ -11,6 +11,7 @@ import PrevisaoEmtregaModal from './PrevisaoEmtregaModal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import FinalizarExecucaoModal from '@/components/modals/FinalizarExecucaoModal';
 import { PlanejamentoAtividade, Atividade, Documento, Empreendimento, Execucao, PlanejamentoDocumento, Usuario as UsuarioEntity, Disciplina as DisciplinaEntity } from '@/entities/all';
 import { isActivityOverdue as isOverdueShared, distribuirHorasPorDias } from '../utils/DateCalculator';
 import { retryWithBackoff } from '../utils/apiUtils';
@@ -259,11 +260,18 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
   const [localStatus, setLocalStatus] = useState(normalizeStatus(plano.status) || 'nao_iniciado');
   const itemStatusColor = getItemStatusColor(localStatus);
 
+  const [showFinalize, setShowFinalize] = useState(false);
+  const [obs, setObs] = useState('');
+
   const handleToggleStatus = async (e) => {
     e.stopPropagation();
     const current = localStatus || 'nao_iniciado';
     const next = current === 'nao_iniciado' ? 'em_andamento' : current === 'em_andamento' ? 'concluido' : 'nao_iniciado';
     try {
+      if (next === 'concluido') {
+        setShowFinalize(true);
+        return;
+      }
       if (plano.tipo_planejamento === 'documento') {
         await PlanejamentoDocumento.update(plano.id, { status: next });
       } else {
@@ -278,6 +286,25 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
     }
   };
 
+  const finalizeWithObs = async (observacaoText) => {
+    try {
+      const payload = { acao: 'finalizar', status: 'finalizado', termino_real: new Date().toISOString(), observacao: observacaoText || '' };
+      if (plano.tipo_planejamento === 'documento') {
+        await PlanejamentoDocumento.update(plano.id, payload);
+      } else {
+        await PlanejamentoAtividade.update(plano.id, payload);
+      }
+      const next = 'concluido';
+      setLocalStatus(next);
+      plano.status = next;
+      if (typeof onUpdate === 'function') onUpdate({ ...plano, status: next });
+      try { window.dispatchEvent(new CustomEvent('execucao:updated')); } catch { }
+    } catch (err) {
+      console.error('Erro ao finalizar com observação:', err);
+      alert('Não foi possível finalizar.');
+    }
+  };
+
   return (
     <div
       className={`relative bg-white border border-gray-300 shadow-md rounded-lg p-3 pl-6 mb-3 flex flex-col items-stretch w-full max-w-[260px] min-w-[200px]`}
@@ -285,6 +312,14 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
       ref={provided?.innerRef}
       {...(provided?.draggableProps || {})}
     >
+      {/* Modal de finalizar com observação */}
+      <FinalizarExecucaoModal
+        open={showFinalize}
+        planejamento={displayName}
+        onCancel={() => setShowFinalize(false)}
+        onConfirm={async (text) => { setShowFinalize(false); setObs(text || ''); await finalizeWithObs(text || ''); }}
+      />
+
       {/* Barra lateral para mudança de status */}
       <div
         onClick={handleToggleStatus}

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Execucao, PlanejamentoAtividade, PlanejamentoDocumento } from '../entities/all';
+import FinalizarExecucaoModal from './modals/FinalizarExecucaoModal';
 
 // Função utilitária exportada para iniciar uma execução a partir de qualquer lugar
 export async function iniciarExecucao(atividade) {
@@ -34,6 +35,40 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
   const [expandido, setExpandido] = useState(false);
   const [segundos, setSegundos] = useState(0);
   const [ativo, setAtivo] = useState(true);
+  const [showFinalizar, setShowFinalizar] = useState(false);
+  const [obsFinalizar, setObsFinalizar] = useState('');
+
+  const projetoNome = useMemo(() => {
+    return atividade?.empreendimento?.nome
+      || atividade?.empreendimento_nome
+      || (atividade?.empreendimento_id ? `Empreendimento ${atividade.empreendimento_id}` : '');
+  }, [atividade]);
+
+  const planejamentoNome = useMemo(() => {
+    if (!atividade) return 'Atividade';
+    // Documento: preferir combinação Numero - Arquivo - Etapa
+    if (atividade.tipo === 'documento' || atividade.documento || atividade.arquivo || atividade.documento_id) {
+      const numero = atividade.documento?.numero
+        || (atividade.descritivo && atividade.descritivo.includes(' - ') ? atividade.descritivo.split(' - ')[0] : null)
+        || atividade.documentoNumero;
+      const arquivo = atividade.documento?.arquivo || atividade.arquivo || atividade.documento_nome;
+      const etapa = atividade.etapa || atividade.documento?.etapa;
+      const parts = [];
+      if (numero) parts.push(numero);
+      if (arquivo) parts.push(arquivo);
+      if (etapa) parts.push(etapa);
+      const combined = parts.join(' - ');
+      if (combined) return combined;
+    }
+    // Atividade: preferir descritivo
+    return atividade.descritivo
+      || atividade.atividade
+      || atividade.atividade_nome
+      || atividade.atividade_id_nome
+      || atividade.descricao
+      || atividade.titulo
+      || 'Atividade';
+  }, [atividade]);
 
   useEffect(() => {
     if (!ativo) return;
@@ -50,7 +85,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
     return `${h} : ${m} : ${sec}`;
   };
 
-  const finalizarAtividade = async () => {
+  const finalizarAtividade = async (observacaoText = '') => {
     try {
       console.log('[FINALIZAR] Clique no botão Finalizar:', atividade);
       let registroAtual = null;
@@ -69,6 +104,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
           // Persistir em horas do timer
           tempo_executado: horasPersistir,
           executor_principal: registroAtual.executor_principal || '',
+          observacao: observacaoText || ''
         };
         console.log('[FINALIZAR] Payload PlanejamentoAtividade:', payload);
         try {
@@ -94,6 +130,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
           termino_real: new Date().toISOString(),
           tempo_executado: horasPersistir,
           executor_principal: registroAtual.executor_principal || '',
+          observacao: observacaoText || ''
         };
         console.log('[FINALIZAR] Payload PlanejamentoDocumento:', payload);
         try {
@@ -168,6 +205,16 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
   // Removido botão 'Iniciar' do modal, mantendo apenas Finalizar e Pausar
   return (
     <div className="fixed left-4 bottom-4 z-50">
+      <FinalizarExecucaoModal
+        open={showFinalizar}
+        planejamento={planejamentoNome}
+        onCancel={() => setShowFinalizar(false)}
+        onConfirm={async (obs) => {
+          setShowFinalizar(false);
+          setObsFinalizar(obs || '');
+          await finalizarAtividade(obs || '');
+        }}
+      />
       {minimizado ? (
         <div className="bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-3 cursor-pointer min-w-[120px] max-w-[90vw]" style={{ pointerEvents: 'auto', position: 'relative' }} onClick={() => setMinimizado(false)}>
           <span className="text-blue-600 font-mono text-lg">{formatTime(segundos)}</span>
@@ -186,7 +233,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
           <div className="flex gap-2">
             <button
               className="bg-red-500 text-white px-4 py-2 rounded font-semibold flex items-center gap-2"
-              onClick={finalizarAtividade}
+              onClick={() => setShowFinalizar(true)}
             >
               <span style={{ fontSize: 18 }}>■</span> Finalizar
             </button>

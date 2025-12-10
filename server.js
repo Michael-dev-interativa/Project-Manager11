@@ -168,7 +168,15 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
           || (Array.isArray(updated.executores) && updated.executores.length > 0 ? updated.executores[0] : '')
           || (req.user && req.user.email) || '';
         const usuario_ajudado = data.usuario_ajudado || '';
-        const updates = { status: 'concluido', termino, tempo_total: tempoSegundos, usuario, executor_principal: usuario, usuario_ajudado, observacao: '' };
+        const updates = {
+          status: 'concluido',
+          termino,
+          tempo_total: tempoSegundos,
+          usuario,
+          executor_principal: usuario,
+          usuario_ajudado,
+          observacao: (data.observacao ?? updated.observacao ?? '')
+        };
         const updatedExec = await updateExecucaoByPlanejamentoLatest(pool, id, updates);
         if (updatedExec) {
           console.log('[Execucao][UPDATE BY PLANEJAMENTO][OK] atividade finalizar', { execucao_id: updatedExec.id });
@@ -494,6 +502,13 @@ async function insertExecucaoRobust(pool, payload) {
         executor_principal: payload.executor_principal ?? payload.usuario ?? '',
         usuario_ajudado: payload.usuario_ajudado ?? '',
         observacao: payload.observacao ?? '',
+        observacoes: payload.observacao ?? '',
+        observacao_texto: payload.observacao ?? '',
+        observacao_execucao: payload.observacao ?? '',
+        observacao_finalizacao: payload.observacao ?? '',
+        comentario: payload.observacao ?? '',
+        comentarios: payload.observacao ?? '',
+        descricao: payload.observacao ?? '',
         status: payload.status ?? 'em_andamento',
         inicio: payload.inicio || new Date().toISOString(),
         termino: payload.termino ?? null,
@@ -564,6 +579,13 @@ async function updateExecucaoRobust(pool, filtro, updates) {
         termino: updates.termino,
         tempo_total: updates.tempo_total,
         observacao: updates.observacao,
+        observacoes: updates.observacao,
+        observacao_texto: updates.observacao,
+        observacao_execucao: updates.observacao,
+        observacao_finalizacao: updates.observacao,
+        comentario: updates.observacao,
+        comentarios: updates.observacao,
+        descricao: updates.observacao,
         usuario: updates.usuario,
         usuario_ajudado: updates.usuario_ajudado,
         usuario_email: updates.usuario,
@@ -639,6 +661,13 @@ async function updateExecucaoByPlanejamentoLatest(pool, planejamentoId, updates)
     termino: updates.termino,
     tempo_total: updates.tempo_total,
     observacao: updates.observacao,
+    observacoes: updates.observacao,
+    observacao_texto: updates.observacao,
+    observacao_execucao: updates.observacao,
+    observacao_finalizacao: updates.observacao,
+    comentario: updates.observacao,
+    comentarios: updates.observacao,
+    descricao: updates.observacao,
     usuario: updates.usuario,
     usuario_ajudado: updates.usuario_ajudado,
     usuario_email: updates.usuario,
@@ -1062,7 +1091,15 @@ app.put('/api/planejamento-documentos/:id', async (req, res) => {
       if (data.acao === 'finalizar' || data.status === 'concluido' || data.status === 'finalizado') {
         const tempoHoras = Number(updated.tempo_executado || 0);
         const tempoSegundos = Math.max(0, Math.round(tempoHoras * 3600));
-        const updates = { status: 'concluido', termino: updated.termino_real || new Date().toISOString(), tempo_total: tempoSegundos, usuario, executor_principal: usuario, usuario_ajudado, observacao: '' };
+        const updates = {
+          status: 'concluido',
+          termino: updated.termino_real || new Date().toISOString(),
+          tempo_total: tempoSegundos,
+          usuario,
+          executor_principal: usuario,
+          usuario_ajudado,
+          observacao: (data.observacao ?? updated.observacao ?? '')
+        };
         const updatedExec = await updateExecucaoByPlanejamentoLatest(pool, id, updates);
         if (updatedExec) {
           console.log('[Execucao][UPDATE BY PLANEJAMENTO][OK] documento finalizar', { execucao_id: updatedExec.id });
