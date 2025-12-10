@@ -362,6 +362,66 @@ app.get('/api/Execucao', async (req, res) => {
   }
 });
 
+// Atualiza status da Execução mais recente por planejamento (ex.: Pausar)
+app.post('/api/Execucao/pause', async (req, res) => {
+  try {
+    const { planejamento_id, status, tempo_total } = req.body || {};
+    if (!planejamento_id) {
+      return res.status(400).json({ error: 'planejamento_id é obrigatório' });
+    }
+    const desiredStatus = (status || 'paralisado').toLowerCase() === 'pausado' ? 'paralisado' : (status || 'paralisado');
+
+    const candidates = ['public."Execucao"', 'public.execucao', 'public.execucoes'];
+    let lastErr = null;
+    for (const table of candidates) {
+      try {
+        const values = [desiredStatus, tempo_total != null ? parseInt(tempo_total) : null, parseInt(planejamento_id)];
+        const sql = `UPDATE ${table}
+          SET status = $1,
+              tempo_total = COALESCE($2, tempo_total)
+          WHERE ctid IN (
+            SELECT ctid FROM ${table}
+            WHERE planejamento_id = $3 AND (termino IS NULL OR termino = '')
+            ORDER BY inicio DESC NULLS LAST
+            LIMIT 1
+          )
+          RETURNING *`;
+        const result = await pool.query(sql, values);
+        if (result.rows.length === 0) {
+          // Nenhuma linha aberta; tenta atualizar a mais recente (mesmo com termino) como fallback
+          const altSql = `UPDATE ${table}
+            SET status = $1,
+                tempo_total = COALESCE($2, tempo_total)
+            WHERE ctid IN (
+              SELECT ctid FROM ${table}
+              WHERE planejamento_id = $3
+              ORDER BY inicio DESC NULLS LAST
+              LIMIT 1
+            )
+            RETURNING *`;
+          const alt = await pool.query(altSql, values);
+          if (alt.rows.length === 0) {
+            continue; // tenta próxima tabela
+          } else {
+            return res.json(alt.rows[0]);
+          }
+        } else {
+          return res.json(result.rows[0]);
+        }
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr) {
+      console.error('[Execucao/pause] Falha ao atualizar status:', lastErr.message);
+    }
+    return res.status(404).json({ error: 'Execução não encontrada para o planejamento informado' });
+  } catch (error) {
+    console.error('Erro ao pausar execução:', error);
+    res.status(500).json({ error: 'Erro ao pausar execução', details: error.message });
+  }
+});
+
 // Rotas para PlanejamentoAtividade
 app.get('/api/planejamento-atividades', async (req, res) => {
   try {

@@ -37,6 +37,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
   const [ativo, setAtivo] = useState(true);
   const [showFinalizar, setShowFinalizar] = useState(false);
   const [obsFinalizar, setObsFinalizar] = useState('');
+  const pausado = !ativo;
 
   const projetoNome = useMemo(() => {
     return atividade?.empreendimento?.nome
@@ -202,6 +203,50 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
     }
   };
 
+  // Alternar Pausar/Retomar com persistência leve de status (e tempo acumulado ao pausar)
+  const togglePause = async () => {
+    try {
+      // calcula horas do timer local
+      const horasTimer = Number((segundos / 3600).toFixed(4));
+      if (ativo) {
+        // Pausar
+        setAtivo(false);
+        onPause && onPause();
+        // Persistir status como pausado e tempo executado parcial (opcional)
+        const payloadBase = { status: 'paralisado' };
+        const payloadComTempo = horasTimer > 0 ? { ...payloadBase, tempo_executado: horasTimer } : payloadBase;
+        if (atividade.tipo === 'documento' || atividade.documento_id || atividade.arquivo) {
+          try { await PlanejamentoDocumento.update(atividade.id, payloadComTempo); } catch { }
+        } else {
+          try { await PlanejamentoAtividade.update(atividade.id, payloadComTempo); } catch { }
+        }
+        // Atualizar imediatamente a tabela de Execucao para refletir "Pausado" na lista do dia
+        try {
+          const tempoSeg = Math.max(0, Math.round(horasTimer * 3600));
+          await fetch('http://localhost:3001/api/Execucao/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planejamento_id: atividade.id, status: 'paralisado', tempo_total: tempoSeg })
+          });
+        } catch (e) {
+          console.warn('[PAUSAR] Falha ao atualizar Execucao:', e?.message || e);
+        }
+      } else {
+        // Retomar
+        setAtivo(true);
+        const payload = { status: 'em_andamento' };
+        if (atividade.tipo === 'documento' || atividade.documento_id || atividade.arquivo) {
+          try { await PlanejamentoDocumento.update(atividade.id, payload); } catch { }
+        } else {
+          try { await PlanejamentoAtividade.update(atividade.id, payload); } catch { }
+        }
+      }
+      try { window.dispatchEvent(new CustomEvent('execucao:updated')); } catch { }
+    } catch (e) {
+      console.error('[PAUSAR] Falha ao alternar pausa:', e);
+    }
+  };
+
   // Removido botão 'Iniciar' do modal, mantendo apenas Finalizar e Pausar
   return (
     <div className="fixed left-4 bottom-4 z-50">
@@ -238,10 +283,10 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
               <span style={{ fontSize: 18 }}>■</span> Finalizar
             </button>
             <button
-              className="bg-gray-200 text-gray-800 px-4 py-2 rounded font-semibold flex items-center gap-2"
-              onClick={() => { setAtivo(false); onPause && onPause(); }}
+              className={`px-4 py-2 rounded font-semibold flex items-center gap-2 ${pausado ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-200 text-gray-800'}`}
+              onClick={togglePause}
             >
-              <span style={{ fontSize: 18 }}>⏸</span> Pausar
+              <span style={{ fontSize: 18 }}>{pausado ? '▶' : '⏸'}</span> {pausado ? 'Retomar' : 'Pausar'}
             </button>
           </div>
         </div>

@@ -22,7 +22,7 @@ function formatDateLong(date) {
 function statusPill(status) {
   const s = (status || '').toLowerCase();
   if (s === 'concluido' || s === 'finalizado') return { text: 'Finalizado', cls: 'bg-green-100 text-green-700' };
-  if (s === 'paralisado' || s === 'pausado') return { text: 'Paralisado', cls: 'bg-rose-100 text-rose-700' };
+  if (s === 'paralisado' || s === 'pausado') return { text: 'Pausado', cls: 'bg-amber-100 text-amber-700' };
   if (s === 'em_andamento' || s === 'em_execucao') return { text: 'Em andamento', cls: 'bg-blue-100 text-blue-700' };
   return { text: status || '—', cls: 'bg-gray-100 text-gray-700' };
 }
@@ -125,21 +125,34 @@ export default function AtividadesHojeTable() {
                   const s = statusPill(it.status);
                   const titulo = it.atividade_nome || it.documento_nome || it.descricao || 'Atividade';
                   const ajudando = it.usuario_ajudado ? String(it.usuario_ajudado).trim() : '';
+                  const rawObs = it.observacao ?? it.observacoes ?? it.observacao_texto ?? it.observacao_execucao ?? it.observacao_finalizacao ?? it.comentario ?? it.comentarios ?? it.descricao_observacao ?? null;
+                  const obs = rawObs != null ? String(rawObs).trim() : '';
+                  const showObs = !!obs && obs.toLowerCase() !== 'null' && obs.toLowerCase() !== 'undefined';
                   return (
-                    <div key={it.id} className="flex items-center justify-between px-4 py-3">
-                      <div className="min-w-0 pr-3">
-                        <div className="text-sm text-gray-800 font-medium truncate">{titulo}</div>
-                        {ajudando && (
-                          <div className="text-xs text-indigo-600 mt-1 truncate">Ajudando: {ajudando}</div>
-                        )}
-                        {it.observacao && (
-                          <div className="text-xs text-gray-500 mt-0.5 truncate">{it.observacao}</div>
-                        )}
+                    <div key={it.id} className="px-4 py-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_110px_72px] items-center gap-3">
+                        <div className="min-w-0 pr-3">
+                          <div className="text-sm text-gray-800 font-medium truncate">{titulo}</div>
+                          {ajudando && (
+                            <div className="text-xs text-indigo-600 mt-1 truncate">Ajudando: {ajudando}</div>
+                          )}
+                        </div>
+                        <span className={`inline-flex w-full justify-center items-center px-2 py-1 rounded text-xs font-medium ${s.cls}`}>{s.text}</span>
+                        <span className="inline-flex w-full justify-center items-center px-2 py-1 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">{formatTempo(seg)}</span>
                       </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${s.cls}`}>{s.text}</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">{formatTempo(seg)}</span>
-                      </div>
+                      {showObs && (
+                        <div className="mt-2 bg-amber-50 border-l-4 border-amber-400 text-amber-800">
+                          <div className="px-3 py-2 text-xs flex items-start gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 mt-0.5 text-amber-500">
+                              <path d="M2.25 12c0-4.556 3.81-8.25 8.5-8.25s8.5 3.694 8.5 8.25-3.81 8.25-8.5 8.25a8.9 8.9 0 01-3.27-.603l-3.33 1.115a.75.75 0 01-.95-.95l1.115-3.33A8.9 8.9 0 012.25 12z" />
+                            </svg>
+                            <div className="leading-5">
+                              <span className="font-semibold text-amber-700">Observação:</span>
+                              <span className="ml-1 text-amber-800">{obs}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

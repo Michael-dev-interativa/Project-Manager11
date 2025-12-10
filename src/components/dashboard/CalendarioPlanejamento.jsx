@@ -21,10 +21,6 @@ import { Filter, Trash2, RefreshCw, LineChart, ChevronRight, ChevronLeft, Calend
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
-// ...existing code...
-
-// ...existing code...
-
 // Função para converter string de data para Date local corretamente
 const parseLocalDate = (dateString) => {
   if (!dateString) return null;
@@ -209,7 +205,7 @@ const CalendarFilters = ({
 
 
 // --- Sub-componente de Itens de Atividade Individual ---
-const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlanejamentos, provided, isDragging, isReprogramando, isSelected, onToggleSelect, hasSelections, onStart }) => {
+const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlanejamentos, provided, isDragging, isReprogramando, isSelected, onToggleSelect, hasSelections, onStart, onResume }) => {
   // Renderização principal do item com handle de arrastar
   // Definir displayName antes do return
   let displayName = '';
@@ -250,6 +246,7 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
     switch (status) {
       case 'em_andamento': return '#3b82f6';
       case 'pausado': return '#f59e0b';
+      case 'paralisado': return '#f59e0b';
       case 'concluido': return '#10b981';
       case 'atrasado': return '#ef4444';
       case 'impactado_por_atraso': return '#8b5cf6';
@@ -432,6 +429,40 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
           Iniciar
         </button>
+      ) : localStatus === 'paralisado' || localStatus === 'pausado' ? (
+        <div className="w-full bg-amber-50 text-amber-800 rounded font-semibold py-2 px-3 flex items-center justify-between text-sm border border-amber-200">
+          <span className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6M5 5h14v14H5z" /></svg>
+            Pausado
+          </span>
+          <button
+            className="ml-3 bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded px-3 py-0.5 text-xs"
+            onClick={async () => {
+              try {
+                if (typeof onResume === 'function') {
+                  await onResume(plano);
+                  setLocalStatus('em_andamento');
+                } else {
+                  // Fallback local: apenas atualizar status no backend e localmente
+                  const payload = { status: 'em_andamento' };
+                  if (plano.tipo_planejamento === 'documento' || plano.documento) {
+                    await PlanejamentoDocumento.update(plano.id, payload);
+                  } else {
+                    await PlanejamentoAtividade.update(plano.id, payload);
+                  }
+                  setLocalStatus('em_andamento');
+                  try { window.dispatchEvent(new CustomEvent('execucao:updated')); } catch { }
+                }
+              } catch (err) {
+                console.error('Erro ao retomar execução:', err);
+                alert('Erro ao retomar: ' + (err?.message || 'tente novamente'));
+              }
+            }}
+            title="Retomar atividade"
+          >
+            Retomar
+          </button>
+        </div>
       ) : (
         <div className="w-full bg-gray-100 text-gray-800 rounded font-semibold py-2 px-3 flex items-center justify-between text-sm border border-gray-200">
           <span className="flex items-center gap-2">
@@ -489,7 +520,7 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
 };
 
 // --- Sub-componente de Grupo de Atividades Diárias ---
-const DailyActivityGroup = ({ empreendimento, executor, atividades, isExpanded, onToggle, disciplinas, dayKey, onActivityDelete, onShowPrevisao, executorMap, allPlanejamentos, isReprogramando, canReprogram, selectedActivities, onToggleSelect, hasSelections, groupKey, provided, isDragging, onStart }) => {
+const DailyActivityGroup = ({ empreendimento, executor, atividades, isExpanded, onToggle, disciplinas, dayKey, onActivityDelete, onShowPrevisao, executorMap, allPlanejamentos, isReprogramando, canReprogram, selectedActivities, onToggleSelect, hasSelections, groupKey, provided, isDragging, onStart, onResume }) => {
 
   // Novo: Estado local para atividades do grupo
   const [atividadesGrupo, setAtividadesGrupo] = useState(atividades);
@@ -700,6 +731,7 @@ const DailyActivityGroup = ({ empreendimento, executor, atividades, isExpanded, 
                 onToggleSelect={onToggleSelect}
                 hasSelections={hasSelections}
                 onStart={onStart}
+                onResume={onResume}
               />
             ))}
           </motion.div>
@@ -1065,6 +1097,28 @@ function CalendarioPlanejamento({ usuarios, disciplinas, onRefresh, isDashboardR
     } catch (err) {
       console.error('Erro ao iniciar execução:', err);
       alert('Erro ao iniciar: ' + (err?.message || 'tente novamente'));
+    }
+  }, [setModalExecucao, triggerUpdate, loadCalendarData, filters.user]);
+
+  // NOVO: Retomar execução a partir do calendário (abre modal e atualiza dados)
+  const handleResume = useCallback(async (plano) => {
+    try {
+      const payload = { status: 'em_andamento' };
+      if (plano.tipo_planejamento === 'documento' || plano.documento) {
+        await PlanejamentoDocumento.update(plano.id, payload);
+      } else {
+        await PlanejamentoAtividade.update(plano.id, payload);
+      }
+      const atividade = { ...plano, status: 'em_andamento', tipo: plano.tipo_planejamento || (plano.documento ? 'documento' : 'atividade') };
+      if (setModalExecucao) setModalExecucao(atividade);
+      if (typeof triggerUpdate === 'function') {
+        triggerUpdate();
+      }
+      loadCalendarData(filters.user);
+      try { window.dispatchEvent(new CustomEvent('execucao:updated')); } catch { }
+    } catch (err) {
+      console.error('Erro ao retomar execução:', err);
+      alert('Erro ao retomar: ' + (err?.message || 'tente novamente'));
     }
   }, [setModalExecucao, triggerUpdate, loadCalendarData, filters.user]);
 
@@ -1577,9 +1631,9 @@ function CalendarioPlanejamento({ usuarios, disciplinas, onRefresh, isDashboardR
     const hasSelections = selectedActivities.size > 0;
 
     // **MODIFICADO**: Passa 'enrichedData' (que são todos) para as views em vez de 'planejamentos'
-    if (viewMode === 'month') return <MonthView date={currentDate} activitiesByDay={activitiesByDay} disciplinas={disciplinas} onActivityDelete={handleActivityDelete} onShowPrevisao={handleShowPrevisao} executorMap={executorMap} allPlanejamentos={enrichedData} isReprogramando={isReprogramando} canReprogram={canReprogram} selectedActivities={selectedActivities} onToggleSelect={toggleActivitySelection} hasSelections={hasSelections} onStart={handleStart} />;
-    if (viewMode === 'week') return <WeekView date={currentDate} activitiesByDay={activitiesByDay} disciplinas={disciplinas} onActivityDelete={handleActivityDelete} onShowPrevisao={handleShowPrevisao} executorMap={executorMap} allPlanejamentos={enrichedData} isReprogramando={isReprogramando} canReprogram={canReprogram} selectedActivities={selectedActivities} onToggleSelect={toggleActivitySelection} hasSelections={hasSelections} onStart={handleStart} />;
-    if (viewMode === 'day') return <DayView date={currentDate} activitiesByDay={activitiesByDay} disciplinas={disciplinas} onActivityDelete={handleActivityDelete} onShowPrevisao={handleShowPrevisao} executorMap={executorMap} allPlanejamentos={enrichedData} isReprogramando={isReprogramando} canReprogram={canReprogram} selectedActivities={selectedActivities} onToggleSelect={toggleActivitySelection} hasSelections={hasSelections} onStart={handleStart} />;
+    if (viewMode === 'month') return <MonthView date={currentDate} activitiesByDay={activitiesByDay} disciplinas={disciplinas} onActivityDelete={handleActivityDelete} onShowPrevisao={handleShowPrevisao} executorMap={executorMap} allPlanejamentos={enrichedData} isReprogramando={isReprogramando} canReprogram={canReprogram} selectedActivities={selectedActivities} onToggleSelect={toggleActivitySelection} hasSelections={hasSelections} onStart={handleStart} onResume={handleResume} />;
+    if (viewMode === 'week') return <WeekView date={currentDate} activitiesByDay={activitiesByDay} disciplinas={disciplinas} onActivityDelete={handleActivityDelete} onShowPrevisao={handleShowPrevisao} executorMap={executorMap} allPlanejamentos={enrichedData} isReprogramando={isReprogramando} canReprogram={canReprogram} selectedActivities={selectedActivities} onToggleSelect={toggleActivitySelection} hasSelections={hasSelections} onStart={handleStart} onResume={handleResume} />;
+    if (viewMode === 'day') return <DayView date={currentDate} activitiesByDay={activitiesByDay} disciplinas={disciplinas} onActivityDelete={handleActivityDelete} onShowPrevisao={handleShowPrevisao} executorMap={executorMap} allPlanejamentos={enrichedData} isReprogramando={isReprogramando} canReprogram={canReprogram} selectedActivities={selectedActivities} onToggleSelect={toggleActivitySelection} hasSelections={hasSelections} onStart={handleStart} onResume={handleResume} />;
     return null;
   };
 

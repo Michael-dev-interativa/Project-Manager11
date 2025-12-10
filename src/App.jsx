@@ -26,7 +26,7 @@ function GlobalExecucaoModal() {
     <ExecucaoModal
       atividade={modalExecucao}
       onClose={() => setModalExecucao(null)}
-      onPause={() => { }}
+      onPause={() => setModalExecucao(null)}
       onFinish={() => setModalExecucao(null)}
     />
   );
