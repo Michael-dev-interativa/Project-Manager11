@@ -117,7 +117,70 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'PlanejamentoAtividade não encontrado' });
     }
-    res.json(result.rows[0]);
+    const updated = result.rows[0];
+
+    // Registro de execução: cria um log em Execucao ao iniciar/finalizar
+    try {
+      if (data.acao === 'iniciar') {
+        const inicio = updated.inicio_real || new Date().toISOString();
+        const usuario = (updated.executor_principal && String(updated.executor_principal).trim())
+          || (Array.isArray(updated.executores) && updated.executores.length > 0 ? updated.executores[0] : '')
+          || (req.user && req.user.email) || '';
+        const usuario_ajudado = data.usuario_ajudado || '';
+        const payload = {
+          empreendimento_id: parseInt(updated.empreendimento_id),
+          usuario,
+          usuario_ajudado,
+          observacao: '',
+          status: 'em_andamento',
+          inicio,
+          termino: null,
+          tempo_total: 0,
+          atividade_nome: updated.descritivo || 'Atividade',
+          planejamento_id: parseInt(id)
+        };
+        // Upsert rígido: tenta atualizar a última linha por planejamento_id; se não existir, insere
+        const updatedExec = await updateExecucaoByPlanejamentoLatest(pool, id, {
+          status: 'em_andamento',
+          inicio,
+          termino: null,
+          tempo_total: 0,
+          observacao: '',
+          usuario,
+          executor_principal: usuario,
+          usuario_ajudado,
+          atividade_nome: payload.atividade_nome,
+          empreendimento_id: payload.empreendimento_id
+        });
+        if (updatedExec) {
+          console.log('[Execucao][UPSERT][UPDATE OK] atividade iniciar', { execucao_id: updatedExec.id });
+        } else {
+          console.log('[Execucao][INSERT]', payload);
+          await insertExecucaoRobust(pool, payload);
+          console.log('[Execucao][INSERT][OK] atividade iniciar');
+        }
+      }
+      if (data.acao === 'finalizar' || data.status === 'concluido' || data.status === 'finalizado') {
+        const termino = updated.termino_real || new Date().toISOString();
+        const tempoHoras = Number(updated.tempo_executado || 0);
+        const tempoSegundos = Math.max(0, Math.round(tempoHoras * 3600));
+        const usuario = (updated.executor_principal && String(updated.executor_principal).trim())
+          || (Array.isArray(updated.executores) && updated.executores.length > 0 ? updated.executores[0] : '')
+          || (req.user && req.user.email) || '';
+        const usuario_ajudado = data.usuario_ajudado || '';
+        const updates = { status: 'concluido', termino, tempo_total: tempoSegundos, usuario, executor_principal: usuario, usuario_ajudado, observacao: '' };
+        const updatedExec = await updateExecucaoByPlanejamentoLatest(pool, id, updates);
+        if (updatedExec) {
+          console.log('[Execucao][UPDATE BY PLANEJAMENTO][OK] atividade finalizar', { execucao_id: updatedExec.id });
+        } else {
+          console.warn('[Execucao][UPDATE BY PLANEJAMENTO][MISS] nenhuma linha encontrada; evitando INSERT para não duplicar');
+        }
+      }
+    } catch (logErr) {
+      console.warn('[Execucao] Falha ao registrar execução de PlanejamentoAtividade:', logErr.message);
+    }
+
+    res.json(updated);
   } catch (error) {
     console.error('Erro ao atualizar PlanejamentoAtividade:', error);
     res.status(500).json({ error: 'Erro ao atualizar PlanejamentoAtividade', details: error.message });
@@ -244,6 +307,53 @@ app.get('/api/test', async (req, res) => {
   }
 });
 
+// Helper: detectar tabela Execucao real e executar SELECT com fallback
+async function selectExecucaoWithFallback(pool, filters = {}) {
+  const { dia, planejamento_id } = filters;
+  const candidates = ['public."Execucao"', 'public.execucao', 'public.execucoes'];
+  const values = [];
+  const where = [];
+  let lastErr = null;
+  for (const table of candidates) {
+    try {
+      let query = `SELECT * FROM ${table}`;
+      values.length = 0; where.length = 0;
+      if (planejamento_id) {
+        where.push(`planejamento_id = $${values.length + 1}`);
+        values.push(parseInt(planejamento_id));
+      }
+      if (dia) {
+        where.push(`CAST(inicio AS TEXT) LIKE $${values.length + 1}`);
+        values.push(`${dia}%`);
+      }
+      if (where.length) query += ' WHERE ' + where.join(' AND ');
+      query += ' ORDER BY inicio DESC NULLS LAST';
+      const result = await pool.query(query, values);
+      return result.rows;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('Tabela Execucao não encontrada');
+}
+
+// Rotas Execucao: listar registros de execução (com fallback de tabela)
+app.get('/api/Execucao', async (req, res) => {
+  try {
+    const rows = await selectExecucaoWithFallback(pool, req.query || {});
+    // Normalizar campo de usuário para a resposta, cobrindo variações de coluna
+    const norm = rows.map(r => {
+      const usuario = r.usuario || r.usuario_email || r.usuario_nome || r.executor || r.executor_principal || '';
+      const atividade_nome = r.atividade_nome || r.documento_nome || r.descricao || r.titulo || null;
+      return { ...r, usuario, atividade_nome };
+    });
+    res.json(norm);
+  } catch (error) {
+    console.error('Erro ao buscar execuções (fallback):', error);
+    res.status(500).json({ error: 'Erro ao buscar execuções', details: error.message });
+  }
+});
+
 // Rotas para PlanejamentoAtividade
 app.get('/api/planejamento-atividades', async (req, res) => {
   try {
@@ -311,6 +421,250 @@ app.get('/api/planejamento-atividades/:id', async (req, res) => {
 
 // Corrigindo rota POST
 const { DateTime } = require('luxon');
+// Helper: inserir execução em tabela existente (tentando variações de esquema/colunas)
+async function insertExecucaoFlexible(pool, payload) {
+  // payload: { atividade_nome, observacao, status, tempo_total, inicio, termino, planejamento_atividade_id, planejamento_documento_id }
+  // Tentativa 1: tabela public."Execucao" com colunas ricas
+  try {
+    const cols = ['atividade_nome', 'observacao', 'status', 'tempo_total', 'inicio'];
+    const vals = [payload.atividade_nome || 'Atividade', payload.observacao || '', payload.status || 'em_andamento', payload.tempo_total ?? 0, payload.inicio || new Date().toISOString()];
+    let sql = 'INSERT INTO public."Execucao" (atividade_nome, observacao, status, tempo_total, inicio';
+    if (payload.termino) { sql += ', termino'; cols.push('termino'); vals.push(payload.termino); }
+    if (payload.planejamento_atividade_id) { sql += ', planejamento_atividade_id'; cols.push('planejamento_atividade_id'); vals.push(parseInt(payload.planejamento_atividade_id)); }
+    if (payload.planejamento_documento_id) { sql += ', planejamento_documento_id'; cols.push('planejamento_documento_id'); vals.push(parseInt(payload.planejamento_documento_id)); }
+    sql += ') VALUES (' + cols.map((_, i) => `$${i + 1}`).join(',') + ')';
+    await pool.query(sql, vals);
+    return true;
+  } catch (err1) {
+    console.warn('[Execucao] Falha ao inserir em public."Execucao" via caminho flexível:', err1.message);
+    return false;
+  }
+}
+
+// Helper robusto: tenta inserir preenchendo todas as colunas pedidas; se falhar, detecta colunas existentes e monta INSERT dinâmico
+async function insertExecucaoRobust(pool, payload) {
+  const fullCols = [
+    'empreendimento_id', 'usuario', 'usuario_ajudado', 'observacao', 'status', 'inicio', 'termino', 'tempo_total', 'atividade_nome', 'planejamento_id'
+  ];
+  const fullVals = [
+    payload.empreendimento_id ?? null,
+    payload.usuario ?? '',
+    payload.usuario_ajudado ?? '',
+    payload.observacao ?? '',
+    payload.status ?? 'em_andamento',
+    payload.inicio || new Date().toISOString(),
+    payload.termino ?? null,
+    payload.tempo_total ?? 0,
+    payload.atividade_nome || 'Atividade',
+    payload.planejamento_id ?? null
+  ];
+  const tableCandidates = ['public."Execucao"'];
+  // Tentativa 1: insert completo
+  for (const table of tableCandidates) {
+    try {
+      const sql = `INSERT INTO ${table} (${fullCols.join(',')}) VALUES (${fullCols.map((_, i) => '$' + (i + 1)).join(',')})`;
+      await pool.query(sql, fullVals);
+      return true;
+    } catch (err) {
+      // continua para fallback
+    }
+  }
+  // Tentativa 2: descobrir colunas disponíveis e montar INSERT dinâmico
+  const infoCandidates = [
+    { schema: 'public', table: 'Execucao' }
+  ];
+  for (const cand of infoCandidates) {
+    try {
+      const colsRes = await pool.query(
+        `SELECT lower(column_name) AS c FROM information_schema.columns WHERE table_schema = $1 AND lower(table_name) = lower($2)`,
+        [cand.schema, cand.table]
+      );
+      if (colsRes.rows.length === 0) continue;
+      const available = colsRes.rows.map(r => r.c);
+      console.log('[Execucao][INSERT][cols disponíveis]', { table: `${cand.schema}.${cand.table}`, available });
+      const useCols = [];
+      const useVals = [];
+      let idx = 1;
+      const mapping = {
+        empreendimento_id: payload.empreendimento_id ?? null,
+        usuario: payload.usuario ?? '',
+        usuario_email: payload.usuario ?? '',
+        usuario_nome: payload.usuario ?? '',
+        executor: payload.usuario ?? '',
+        executor_principal: payload.executor_principal ?? payload.usuario ?? '',
+        usuario_ajudado: payload.usuario_ajudado ?? '',
+        observacao: payload.observacao ?? '',
+        status: payload.status ?? 'em_andamento',
+        inicio: payload.inicio || new Date().toISOString(),
+        termino: payload.termino ?? null,
+        tempo_total: payload.tempo_total ?? 0,
+        atividade_nome: payload.atividade_nome || 'Atividade',
+        documento_nome: payload.documento_nome || payload.atividade_nome || null,
+        planejamento_id: payload.planejamento_id ?? null,
+        // Fallbacks comuns
+        planejamento_atividade_id: payload.planejamento_id ?? null,
+        planejamento_documento_id: payload.planejamento_id ?? null
+      };
+      for (const [col, val] of Object.entries(mapping)) {
+        if (available.includes(col)) {
+          useCols.push(col);
+          useVals.push(val);
+          idx++;
+        }
+      }
+      if (useCols.length === 0) continue;
+      const sql = `INSERT INTO ${cand.schema}."${cand.table}" (${useCols.join(',')}) VALUES (${useCols.map((_, i) => '$' + (i + 1)).join(',')})`;
+      console.log('[Execucao][INSERT][dinâmico]', { table: `${cand.schema}.${cand.table}`, useCols });
+      await pool.query(sql, useVals);
+      console.warn('[Execucao] Inserção realizada via fallback dinâmico em', `${cand.schema}.${cand.table}`);
+      return true;
+    } catch (err) {
+      // tenta próximo
+    }
+  }
+  throw new Error('Falha ao inserir Execucao em quaisquer variações de tabela/colunas');
+}
+
+// Helper: atualizar execução existente (finalização) com fallback de tabela/colunas
+async function updateExecucaoRobust(pool, filtro, updates) {
+  const candidates = [
+    { schema: 'public', table: 'Execucao' }
+  ];
+  let lastErr = null;
+  for (const cand of candidates) {
+    try {
+      const colsRes = await pool.query(
+        `SELECT lower(column_name) AS c FROM information_schema.columns WHERE table_schema = $1 AND lower(table_name) = lower($2)`,
+        [cand.schema, cand.table]
+      );
+      const available = colsRes.rows.map(r => r.c);
+      // Monta WHERE por planejamento_id (ou colunas alternativas) e status em_andamento
+      let whereCol = 'planejamento_id';
+      if (!available.includes(whereCol)) {
+        if (available.includes('planejamento_atividade_id')) whereCol = 'planejamento_atividade_id';
+        else if (available.includes('planejamento_documento_id')) whereCol = 'planejamento_documento_id';
+      }
+      if (!available.includes(whereCol)) continue;
+      const whereParts = [`${whereCol} = $1`];
+      const whereVals = [parseInt(filtro.planejamento_id)];
+      if (filtro.status) {
+        if (available.includes('status')) { whereParts.push(`status = $2`); whereVals.push(filtro.status); }
+      }
+      // Seleciona a última execução em andamento para este planejamento
+      const selSql = `SELECT * FROM ${cand.schema}."${cand.table}" WHERE ${whereParts.join(' AND ')} ORDER BY inicio DESC NULLS LAST LIMIT 1`;
+      const selRes = await pool.query(selSql, whereVals);
+      if (selRes.rows.length === 0) { lastErr = new Error('Nenhum registro de execução em andamento encontrado'); continue; }
+      const row = selRes.rows[0];
+      // Monta SET dinâmico com colunas existentes
+      const setCols = [];
+      const setVals = [];
+      let idx = 1;
+      const mapping = {
+        status: updates.status,
+        termino: updates.termino,
+        tempo_total: updates.tempo_total,
+        observacao: updates.observacao,
+        usuario: updates.usuario,
+        usuario_ajudado: updates.usuario_ajudado,
+        usuario_email: updates.usuario,
+        usuario_nome: updates.usuario,
+        executor: updates.usuario,
+        executor_principal: updates.usuario,
+        atividade_nome: updates.atividade_nome,
+        documento_nome: updates.documento_nome,
+        empreendimento_id: updates.empreendimento_id
+      };
+      for (const [col, val] of Object.entries(mapping)) {
+        if (val !== undefined && available.includes(col)) {
+          setCols.push(`${col} = $${idx}`);
+          setVals.push(val);
+          idx++;
+        }
+      }
+      if (setCols.length === 0) { lastErr = new Error('Nenhum campo válido para atualizar'); continue; }
+      const updSql = `UPDATE ${cand.schema}."${cand.table}" SET ${setCols.join(', ')} WHERE id = $${idx}`;
+      setVals.push(row.id);
+      await pool.query(updSql, setVals);
+      return true;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('Falha ao atualizar Execucao');
+}
+// Helper: localizar execução já em andamento para um planejamento (evitar duplicidade)
+async function findExecucaoEmAndamento(pool, planejamentoId) {
+  const candidates = ['public."Execucao"'];
+  for (const table of candidates) {
+    try {
+      const res = await pool.query(
+        `SELECT * FROM ${table} WHERE planejamento_id = $1 AND (status = 'em_andamento' OR termino IS NULL) ORDER BY inicio DESC NULLS LAST LIMIT 1`,
+        [parseInt(planejamentoId)]
+      );
+      if (res.rows.length > 0) return { table, row: res.rows[0] };
+    } catch (_) { }
+  }
+  return null;
+}
+// Helper: localizar última execução por planejamento (qualquer status)
+async function findLatestExecucaoByPlanejamento(pool, planejamentoId) {
+  const candidates = ['public."Execucao"'];
+  for (const table of candidates) {
+    try {
+      const res = await pool.query(
+        `SELECT * FROM ${table} WHERE planejamento_id = $1 ORDER BY inicio DESC NULLS LAST LIMIT 1`,
+        [parseInt(planejamentoId)]
+      );
+      if (res.rows.length > 0) return { table, row: res.rows[0] };
+    } catch (_) { }
+  }
+  return null;
+}
+
+// Helper: atualiza diretamente por planejamento_id usando a última linha encontrada
+async function updateExecucaoByPlanejamentoLatest(pool, planejamentoId, updates) {
+  const latest = await findLatestExecucaoByPlanejamento(pool, planejamentoId);
+  if (!latest) return null;
+  // Descobrir colunas disponíveis na tabela alvo
+  const [schema, tableName] = latest.table.includes('.') ? latest.table.split('.') : ['public', latest.table.replace(/"/g, '')];
+  const colsRes = await pool.query(
+    `SELECT lower(column_name) AS c FROM information_schema.columns WHERE table_schema = $1 AND lower(table_name) = lower($2)`,
+    [schema.replace(/"/g, ''), tableName.replace(/"/g, '')]
+  );
+  const available = colsRes.rows.map(r => r.c);
+  console.log('[Execucao][UPDATE][cols disponíveis]', { table: latest.table, available });
+  // Mapear updates incluindo alternativas para usuário
+  const mapping = {
+    status: updates.status,
+    termino: updates.termino,
+    tempo_total: updates.tempo_total,
+    observacao: updates.observacao,
+    usuario: updates.usuario,
+    usuario_ajudado: updates.usuario_ajudado,
+    usuario_email: updates.usuario,
+    usuario_nome: updates.usuario,
+    executor: updates.usuario,
+    executor_principal: updates.executor_principal ?? updates.usuario,
+    atividade_nome: updates.atividade_nome,
+    documento_nome: updates.documento_nome,
+    empreendimento_id: updates.empreendimento_id
+  };
+  const setCols = [];
+  const setVals = [];
+  let idx = 1;
+  for (const [col, val] of Object.entries(mapping)) {
+    if (val !== undefined && available.includes(col)) {
+      setCols.push(`${col} = $${idx}`);
+      setVals.push(val);
+      idx++;
+    }
+  }
+  console.log('[Execucao][UPDATE][dinâmico setCols]', { table: latest.table, setCols });
+  if (setCols.length === 0) return null;
+  const sql = `UPDATE ${latest.table} SET ${setCols.join(', ')} WHERE id = $${idx} RETURNING *`;
+  const res = await pool.query(sql, [...setVals, latest.row.id]);
+  return res.rows[0] || null;
+}
 app.post('/api/planejamento-atividades', async (req, res) => {
   try {
     console.log('[DEBUG BACKEND] Payload recebido:', req.body);
@@ -417,48 +771,10 @@ app.get('/api/Usuario/me', async (req, res) => {
     } catch (e2) {
       // ignora
     }
-    // Mock final
-    return res.json({ id: 1, nome: 'Admin Sistema', email: 'admin@empresa.com', perfil: 'coordenador', status: 'ativo' });
+    // Se nada encontrado, retorna um mock simples
+    return res.json({ id: 0, nome: 'Usuário padrão', email: '' });
   } catch (error) {
-    console.error('Erro em /api/Usuario/me:', error);
-    return res.status(500).json({ error: 'Erro ao obter usuário atual', details: error.message });
-  }
-});
-
-// Lista de usuários
-app.get('/api/Usuario', async (req, res) => {
-  try {
-    try {
-      const result = await pool.query('SELECT * FROM public."Usuario" ORDER BY nome NULLS LAST');
-      return res.json(result.rows);
-    } catch (e1) {
-      const result2 = await pool.query('SELECT * FROM usuarios ORDER BY nome');
-      return res.json(result2.rows);
-    }
-  } catch (error) {
-    console.error('Erro ao buscar usuários:', error);
-    return res.status(500).json({ error: 'Erro ao buscar usuários', details: error.message });
-  }
-});
-
-// Lista de disciplinas
-app.get('/api/Disciplina', async (req, res) => {
-  try {
-    try {
-      const result = await pool.query('SELECT * FROM public."Disciplina" ORDER BY nome');
-      return res.json(result.rows);
-    } catch (e1) {
-      try {
-        const result2 = await pool.query('SELECT * FROM public."Disciplinas" ORDER BY nome');
-        return res.json(result2.rows);
-      } catch (e2) {
-        const alt = await pool.query('SELECT * FROM disciplinas ORDER BY nome');
-        return res.json(alt.rows);
-      }
-    }
-  } catch (error) {
-    console.error('Erro ao buscar disciplinas:', error);
-    return res.status(500).json({ error: 'Erro ao buscar disciplinas', details: error.message });
+    res.status(500).json({ error: 'Erro ao buscar usuário logado', details: error.message });
   }
 });
 
@@ -613,6 +929,155 @@ app.delete('/api/planejamento-documentos/:id', async (req, res) => {
   } catch (error) {
     console.error('Erro ao deletar PlanejamentoDocumento:', error);
     res.status(500).json({ error: 'Erro ao deletar PlanejamentoDocumento' });
+  }
+});
+
+// PUT: atualiza um PlanejamentoDocumento por ID e registra Execucao
+app.put('/api/planejamento-documentos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = req.body || {};
+
+    // Normaliza ações
+    if (data.acao === 'iniciar') {
+      data.status = 'em_andamento';
+      const now = new Date();
+      const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      data.inicio_real = brasiliaDate.toISOString();
+      data.tempo_executado = data.tempo_executado ?? 0;
+    }
+    if (data.acao === 'finalizar') {
+      data.status = 'concluido';
+      const now = new Date();
+      const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      data.termino_real = brasiliaDate.toISOString();
+      const atual = await pool.query('SELECT * FROM public."PlanejamentoDocumento" WHERE id = $1', [parseInt(id)]);
+      if (atual.rows.length > 0) {
+        const total_planejado = Number(atual.rows[0].tempo_planejado || 0);
+        const tempo_executado_horas = Number(data.tempo_executado ?? atual.rows[0].tempo_executado ?? 0);
+        data.tempo_executado = tempo_executado_horas;
+        data.sobra_real = total_planejado - tempo_executado_horas;
+      }
+    }
+
+    // Fallback de conclusão sem ação
+    if (!data.acao && (data.status === 'concluido' || data.status === 'finalizado')) {
+      try {
+        const atual = await pool.query('SELECT * FROM public."PlanejamentoDocumento" WHERE id = $1', [parseInt(id)]);
+        if (atual.rows.length > 0) {
+          const row = atual.rows[0];
+          const inicio = row.inicio_real ? new Date(row.inicio_real) : null;
+          const termino = row.termino_real ? new Date(row.termino_real) : new Date();
+          if (inicio) {
+            const diffHoras = (termino - inicio) / 3600000;
+            const horas = Math.max(0, diffHoras);
+            const total_planejado = Number(row.tempo_planejado || 0);
+            data.tempo_executado = Number(horas.toFixed(4));
+            data.sobra_real = total_planejado - data.tempo_executado;
+            data.termino_real = termino.toISOString();
+            data.status = 'concluido';
+          }
+        }
+      } catch (e) {
+        console.warn('[BACKEND][FALLBACK Documento] Erro ao calcular tempo_executado por datas:', e.message);
+      }
+    }
+
+    // Update
+    const allowedFields = [
+      'arquivo', 'documento_id', 'empreendimento_id', 'etapa', 'executores', 'executor_principal', 'predecessora_id',
+      'tempo_planejado', 'inicio_planejado', 'termino_planejado', 'sobra_planejada',
+      'inicio_ajustado', 'termino_ajustado', 'sobra_ajustada',
+      'inicio_real', 'termino_real', 'sobra_real', 'tempo_executado', 'status', 'semana_ano', 'prioridade', 'horas_por_dia', 'subdisciplinas'
+    ];
+    const setParts = [];
+    const values = [];
+    let idx = 1;
+    for (const field of allowedFields) {
+      if (data[field] !== undefined) {
+        setParts.push(`"${field}" = $${idx}`);
+        if (field === 'executores' || field === 'subdisciplinas') {
+          values.push(JSON.stringify(data[field]));
+        } else if (field === 'documento_id' || field === 'empreendimento_id' || field === 'predecessora_id' || field === 'prioridade') {
+          values.push(data[field] !== null ? parseInt(data[field]) : null);
+        } else if (field === 'tempo_planejado' || field === 'sobra_planejada' || field === 'sobra_ajustada' || field === 'sobra_real' || field === 'tempo_executado') {
+          values.push(data[field] !== null ? parseFloat(data[field]) : null);
+        } else {
+          values.push(data[field]);
+        }
+        idx++;
+      }
+    }
+    if (setParts.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo válido para atualizar' });
+    }
+    const sql = `UPDATE public."PlanejamentoDocumento" SET ${setParts.join(', ')} WHERE id = $${idx} RETURNING *`;
+    values.push(parseInt(id));
+    const result = await pool.query(sql, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'PlanejamentoDocumento não encontrado' });
+    }
+    const updated = result.rows[0];
+
+    // Registro de Execucao
+    try {
+      const usuario = (updated.executor_principal && String(updated.executor_principal).trim())
+        || (Array.isArray(updated.executores) && updated.executores.length > 0 ? updated.executores[0] : '')
+        || (req.user && req.user.email) || '';
+      const usuario_ajudado = data.usuario_ajudado || '';
+      if (data.acao === 'iniciar') {
+        const inicio = updated.inicio_real || new Date().toISOString();
+        const payload = {
+          empreendimento_id: parseInt(updated.empreendimento_id),
+          usuario,
+          usuario_ajudado,
+          observacao: '',
+          status: 'em_andamento',
+          inicio,
+          termino: null,
+          tempo_total: 0,
+          atividade_nome: updated.arquivo || `Documento ${updated.documento_id}`,
+          planejamento_id: parseInt(id)
+        };
+        const updatedExec = await updateExecucaoByPlanejamentoLatest(pool, id, {
+          status: 'em_andamento',
+          inicio,
+          termino: null,
+          tempo_total: 0,
+          observacao: '',
+          usuario,
+          executor_principal: usuario,
+          usuario_ajudado,
+          atividade_nome: payload.atividade_nome,
+          empreendimento_id: payload.empreendimento_id
+        });
+        if (updatedExec) {
+          console.log('[Execucao][UPSERT][UPDATE OK] documento iniciar', { execucao_id: updatedExec.id });
+        } else {
+          console.log('[Execucao][INSERT]', payload);
+          await insertExecucaoRobust(pool, payload);
+          console.log('[Execucao][INSERT][OK] documento iniciar');
+        }
+      }
+      if (data.acao === 'finalizar' || data.status === 'concluido' || data.status === 'finalizado') {
+        const tempoHoras = Number(updated.tempo_executado || 0);
+        const tempoSegundos = Math.max(0, Math.round(tempoHoras * 3600));
+        const updates = { status: 'concluido', termino: updated.termino_real || new Date().toISOString(), tempo_total: tempoSegundos, usuario, executor_principal: usuario, usuario_ajudado, observacao: '' };
+        const updatedExec = await updateExecucaoByPlanejamentoLatest(pool, id, updates);
+        if (updatedExec) {
+          console.log('[Execucao][UPDATE BY PLANEJAMENTO][OK] documento finalizar', { execucao_id: updatedExec.id });
+        } else {
+          console.warn('[Execucao][UPDATE BY PLANEJAMENTO][MISS] nenhuma linha encontrada; evitando INSERT para não duplicar');
+        }
+      }
+    } catch (logErr) {
+      console.warn('[Execucao] Falha ao registrar execução de PlanejamentoDocumento:', logErr.message);
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Erro ao atualizar PlanejamentoDocumento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar PlanejamentoDocumento', details: error.message });
   }
 });
 
@@ -859,6 +1324,9 @@ process.on('SIGINT', async () => {
   await pool.end();
   process.exit(0);
 });
+
+// Fim do arquivo
+
 
 
 // Rotas para Atividades (CRUD)
@@ -1770,230 +2238,3 @@ app.post('/api/Execucao', async (req, res) => {
     res.status(500).json({ error: 'Erro ao criar execução', details: error.message });
   }
 });
-
-// Rota para atualizar uma execução
-app.put('/api/Execucao/:id', async (req, res) => {
-  const id = parseInt(req.params.id);
-  try {
-    const {
-      empreendimento_id,
-      usuario,
-      usuario_ajudado,
-      observacao,
-      status,
-      inicio,
-      termino,
-      tempo_total,
-      atividade_nome,
-      planejamento_id // novo campo
-    } = req.body;
-
-    // Atualiza apenas os campos enviados
-    const result = await pool.query(
-      `UPDATE "Execucao" SET
-        empreendimento_id = COALESCE($1, empreendimento_id),
-        usuario = COALESCE($2, usuario),
-        usuario_ajudado = COALESCE($3, usuario_ajudado),
-        observacao = COALESCE($4, observacao),
-        status = COALESCE($5, status),
-        inicio = COALESCE($6, inicio),
-        termino = COALESCE($7, termino),
-        tempo_total = COALESCE($8, tempo_total),
-        atividade_nome = COALESCE($9, atividade_nome),
-        planejamento_id = COALESCE($10, planejamento_id)
-      WHERE id = $11 RETURNING *`,
-      [
-        empreendimento_id,
-        usuario,
-        usuario_ajudado,
-        observacao,
-        status,
-        inicio,
-        termino,
-        tempo_total,
-        atividade_nome,
-        planejamento_id,
-        id
-      ]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Execução não encontrada' });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Erro ao atualizar execução:', error);
-    res.status(500).json({ error: 'Erro ao atualizar execução', details: error.message });
-  }
-});
-
-// Rota para listar execuções
-app.get('/api/Execucao', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM "Execucao"');
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Erro ao buscar execuções:', error);
-    res.status(500).json({ error: 'Erro ao buscar execuções', details: error.message });
-  }
-});
-
-// Rota para atualizar PlanejamentoAtividade
-app.put('/api/planejamento-atividades/:id', async (req, res) => {
-  const id = parseInt(req.params.id);
-  try {
-    const dados = req.body;
-    // Ajusta updated_at para horário de Brasília (UTC-3)
-    const now = new Date();
-    const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    dados.updated_at = brasiliaDate.toISOString();
-    console.log('[BACKEND] PUT /api/planejamento-atividades/' + id);
-    console.log('[BACKEND] Payload recebido:', dados);
-    console.log('[BACKEND] Valor de dados.acao:', JSON.stringify(dados.acao));
-    // Busca registro atual
-    const select = await pool.query('SELECT * FROM "PlanejamentoAtividade" WHERE id = $1', [id]);
-    console.log('[BACKEND][SELECT] Resultado:', select.rows);
-    if (!select.rows.length) {
-      console.error(`[BACKEND][ERRO] Nenhum registro encontrado para id=${id}`);
-      return res.status(404).json({ error: `PlanejamentoAtividade id=${id} não encontrado` });
-    }
-    const atual = select.rows[0];
-    let status = atual.status;
-    let inicio_real = atual.inicio_real;
-    let termino_real = atual.termino_real;
-    let sobra_real = atual.sobra_real;
-    let tempo_executado = typeof atual.tempo_executado !== 'undefined' ? Number(atual.tempo_executado) : 0;
-    if (dados.acao === 'iniciar') {
-      status = 'em_andamento';
-      // Ajusta para horário de Brasília (UTC-3)
-      const now = new Date();
-      const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-      inicio_real = brasiliaDate.toISOString();
-      tempo_executado = 0;
-      console.log('[BACKEND] Ação: INICIAR - status:', status, 'inicio_real (Brasília):', inicio_real);
-    }
-    if (dados.acao === 'finalizar') {
-      status = 'concluido';
-      // Ajusta para horário de Brasília (UTC-3)
-      const now = new Date();
-      const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-      termino_real = brasiliaDate.toISOString();
-      const total_planejado = Number(atual.tempo_planejado || 0);
-      // Frontend já envia horas; não converter aqui
-      tempo_executado = Number(dados.tempo_executado ?? atual.tempo_executado ?? 0);
-      sobra_real = total_planejado - tempo_executado;
-      dados.tempo_executado = tempo_executado;
-      console.log('[BACKEND] Ação: FINALIZAR - status:', status, 'termino_real (Brasília):', termino_real, 'sobra_real:', sobra_real, 'tempo_executado:', tempo_executado);
-    }
-    const result = await pool.query(
-      `UPDATE "PlanejamentoAtividade" SET
-        status = $1,
-        inicio_real = $2,
-        termino_real = $3,
-        sobra_real = $4,
-        tempo_executado = $5,
-        executor_principal = $6,
-        updated_at = $7
-      WHERE id = $8 RETURNING *`,
-      [
-        status,
-        inicio_real,
-        termino_real,
-        sobra_real,
-        tempo_executado,
-        dados.executor_principal || atual.executor_principal,
-        dados.updated_at,
-        id
-      ]
-    );
-    console.log('[BACKEND] Registro atualizado:', result.rows[0]);
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('[BACKEND] Erro ao atualizar PlanejamentoAtividade:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Rota para atualizar PlanejamentoDocumento
-app.put('/api/planejamento-documentos/:id', async (req, res) => {
-  const id = parseInt(req.params.id);
-  try {
-    const dados = req.body;
-    const now = new Date();
-    const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    dados.updated_at = brasiliaDate.toISOString();
-    console.log('[BACKEND] PUT /api/planejamento-documentos/' + id);
-    console.log('[BACKEND] Payload recebido:', dados);
-    // Busca registro atual
-    const select = await pool.query('SELECT * FROM "PlanejamentoDocumento" WHERE id = $1', [id]);
-    const atual = select.rows[0];
-    let status = atual.status;
-    let inicio_real = atual.inicio_real;
-    let termino_real = atual.termino_real;
-    let sobra_real = atual.sobra_real;
-    if (dados.acao === 'iniciar') {
-      status = 'em_andamento';
-      // Horário de Brasília (UTC-3) com hora completa
-      const now = new Date();
-      const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-      inicio_real = brasiliaDate.toISOString();
-      console.log('[BACKEND] Ação: INICIAR - status:', status, 'inicio_real:', inicio_real);
-    }
-    if (dados.acao === 'finalizar') {
-      status = 'concluido';
-      // Horário de Brasília (UTC-3) com hora completa
-      const now = new Date();
-      const brasiliaDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-      termino_real = brasiliaDate.toISOString();
-      const total_planejado = Number(atual.tempo_planejado || 0);
-      // Frontend envia horas; não dividir por 3600
-      let tempo_executado = Number(dados.tempo_executado ?? atual.tempo_executado ?? 0);
-      sobra_real = total_planejado - tempo_executado;
-      dados.tempo_executado = tempo_executado;
-      console.log('[BACKEND] Ação: FINALIZAR - status:', status, 'termino_real:', termino_real, 'sobra_real:', sobra_real, 'tempo_executado:', tempo_executado);
-    }
-    // Fallback: se concluir sem acao finalizar, calcular tempo por diferença de datas
-    if (!dados.acao && (status === 'concluido' || status === 'finalizado')) {
-      const inicio = atual.inicio_real ? new Date(atual.inicio_real) : null;
-      const terminoCalc = atual.termino_real ? new Date(atual.termino_real) : new Date();
-      if (inicio) {
-        const diffHoras = (terminoCalc - inicio) / 3600000;
-        const horas = Math.max(0, diffHoras);
-        const total_planejado = Number(atual.tempo_planejado || 0);
-        sobra_real = total_planejado - Number(horas.toFixed(4));
-        dados.tempo_executado = Number(horas.toFixed(4));
-        termino_real = terminoCalc.toISOString();
-        status = 'concluido';
-      }
-    }
-    const result = await pool.query(
-      `UPDATE "PlanejamentoDocumento" SET
-        status = $1,
-        inicio_real = $2,
-        termino_real = $3,
-        sobra_real = $4,
-        tempo_executado = $5,
-        executor_principal = $6
-      WHERE id = $7 RETURNING *`,
-      [
-        status,
-        inicio_real,
-        termino_real,
-        sobra_real,
-        dados.tempo_executado || atual.tempo_executado,
-        dados.executor_principal || atual.executor_principal,
-        id
-      ]
-    );
-    console.log('[BACKEND] Registro atualizado:', result.rows[0]);
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('[BACKEND] Erro ao atualizar PlanejamentoDocumento:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.use((req, res, next) => {
-  console.log(`[GLOBAL LOG] ${req.method} ${req.url} | Body:`, req.body);
-  next();
-});
-

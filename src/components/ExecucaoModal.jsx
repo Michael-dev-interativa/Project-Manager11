@@ -126,6 +126,10 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
       } catch (e) {
         onFinish && onFinish({ ...atividade, status: 'finalizado' });
       }
+      // Dispara evento global para atualizar listagens (ex.: Atividades de Hoje)
+      try {
+        window.dispatchEvent(new CustomEvent('execucao:updated'));
+      } catch { }
       onReload && onReload();
     } catch (err) {
       console.error('Erro ao finalizar atividade:', err);

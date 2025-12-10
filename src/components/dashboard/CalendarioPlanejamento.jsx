@@ -110,6 +110,17 @@ function calculateActivityStatus(plano, allPlanejamentos = []) {
   // Caso contrário, manter o status original ou 'nao_iniciado'
   return statusNormalizado || 'nao_iniciado';
 }
+// Hook: ouvir atualizações de execução e forçar recarregar planejamentos
+function useExecucaoAutoRefresh(onRefresh) {
+  useEffect(() => {
+    const handler = () => {
+      try { if (typeof onRefresh === 'function') onRefresh(); } catch { }
+    };
+    window.addEventListener('execucao:updated', handler);
+    return () => window.removeEventListener('execucao:updated', handler);
+  }, [onRefresh]);
+}
+
 
 
 // --- Sub-componente de Filtros ---
@@ -1546,6 +1557,9 @@ function CalendarioPlanejamento({ usuarios, disciplinas, onRefresh, isDashboardR
       loadCalendarData(filters.user);
     }
   };
+
+  // Ouvir evento do modal de execução para auto-recarregar calendário
+  useExecucaoAutoRefresh(refreshAll);
 
   return (
     <>
