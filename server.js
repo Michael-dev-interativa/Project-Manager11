@@ -163,7 +163,7 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
       if (data.acao === 'finalizar' || data.status === 'concluido' || data.status === 'finalizado') {
         const termino = updated.termino_real || new Date().toISOString();
         const tempoHoras = Number(updated.tempo_executado || 0);
-        const tempoSegundos = Math.max(0, Math.round(tempoHoras * 3600));
+        const tempoHorasStr = Math.max(0, tempoHoras).toFixed(4);
         const usuario = (updated.executor_principal && String(updated.executor_principal).trim())
           || (Array.isArray(updated.executores) && updated.executores.length > 0 ? updated.executores[0] : '')
           || (req.user && req.user.email) || '';
@@ -171,7 +171,7 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
         const updates = {
           status: 'concluido',
           termino,
-          tempo_total: tempoSegundos,
+          tempo_total: tempoHorasStr,
           usuario,
           executor_principal: usuario,
           usuario_ajudado,
@@ -317,32 +317,112 @@ app.get('/api/test', async (req, res) => {
 
 // Helper: detectar tabela Execucao real e executar SELECT com fallback
 async function selectExecucaoWithFallback(pool, filters = {}) {
-  const { dia, planejamento_id } = filters;
-  const candidates = ['public."Execucao"', 'public.execucao', 'public.execucoes'];
+  const { dia, planejamento_id, usuario } = filters;
+
+  const table = 'public."Execucao"';
   const values = [];
   const where = [];
+  let available = [];
+  try {
+    const colsRes = await pool.query(
+      `SELECT lower(column_name) AS c FROM information_schema.columns WHERE table_schema = 'public' AND lower(table_name) = lower('Execucao')`
+    );
+    available = colsRes.rows.map(r => r.c);
+  } catch (_) {
+    available = [];
+  }
+
+  let sql = `SELECT * FROM ${table}`;
+
+  // Filtro por planejamento (suporta colunas alternativas; null/vazio/'0')
+  const planColsCandidates = ['planejamento_id', 'planejamento_atividade_id', 'planejamento_documento_id'];
+  const planCols = planColsCandidates.filter(c => available.includes(c));
+  if (planejamento_id !== undefined && planCols.length > 0) {
+    if (String(planejamento_id).toLowerCase() === 'null' || planejamento_id === null) {
+      const parts = planCols.map(c => `(${c} IS NULL OR NULLIF(CAST(${c} AS TEXT), '') IS NULL OR CAST(${c} AS TEXT) = '0')`);
+      where.push(`(${parts.join(' OR ')})`);
+    } else {
+      const idx = values.length + 1;
+      values.push(parseInt(planejamento_id));
+      const parts = planCols.map(c => `${c} = $${idx}`);
+      where.push(`(${parts.join(' OR ')})`);
+    }
+  }
+
+  // Filtro por usuário (somente colunas existentes)
+  if (usuario) {
+    const userColsCandidates = ['usuario', 'usuario_email', 'usuario_nome', 'executor', 'executor_principal'];
+    const userCols = userColsCandidates.filter(c => available.includes(c));
+    if (userCols.length > 0) {
+      const idx = values.length + 1;
+      values.push(String(usuario));
+      const parts = userCols.map(c => `${c} = $${idx}`);
+      where.push(`(${parts.join(' OR ')})`);
+    }
+  }
+
+  // Filtro por dia
+  if (dia && available.includes('inicio')) {
+    where.push(`CAST(inicio AS TEXT) LIKE $${values.length + 1}`);
+    values.push(`${dia}%`);
+  }
+
+  if (where.length) sql += ' WHERE ' + where.join(' AND ');
+  sql += ' ORDER BY inicio DESC NULLS LAST';
+  const result = await pool.query(sql, values);
+  return result.rows;
+}
+
+// Helper: listar AtividadeGenerica com fallback de tabela/nomes
+async function selectAtividadeGenericaWithFallback(pool) {
+  const candidates = [
+    'public."AtividadeGenerica"',
+    'public.atividadegenerica',
+    'public.atividade_generica',
+    'public.atividades_genericas'
+  ];
   let lastErr = null;
   for (const table of candidates) {
     try {
-      let query = `SELECT * FROM ${table}`;
-      values.length = 0; where.length = 0;
-      if (planejamento_id) {
-        where.push(`planejamento_id = $${values.length + 1}`);
-        values.push(parseInt(planejamento_id));
-      }
-      if (dia) {
-        where.push(`CAST(inicio AS TEXT) LIKE $${values.length + 1}`);
-        values.push(`${dia}%`);
-      }
-      if (where.length) query += ' WHERE ' + where.join(' AND ');
-      query += ' ORDER BY inicio DESC NULLS LAST';
-      const result = await pool.query(query, values);
+      const sql = `SELECT * FROM ${table} ORDER BY nome`;
+      const result = await pool.query(sql);
       return result.rows;
     } catch (err) {
       lastErr = err;
     }
   }
-  throw lastErr || new Error('Tabela Execucao não encontrada');
+  throw lastErr || new Error('Tabela AtividadeGenerica não encontrada');
+}
+
+// Helper: inserir AtividadeGenerica com fallback de tabela/coluna
+async function insertAtividadeGenericaWithFallback(pool, payload = {}) {
+  const { nome } = payload;
+  if (!nome || String(nome).trim().length === 0) {
+    throw new Error('Nome é obrigatório');
+  }
+  const candidates = [
+    'public."AtividadeGenerica"',
+    'public.atividadegenerica',
+    'public.atividade_generica',
+    'public.atividades_genericas'
+  ];
+  const columnOptions = ['nome', 'titulo', 'descricao'];
+  let lastErr = null;
+  for (const table of candidates) {
+    for (const col of columnOptions) {
+      try {
+        const sql = `INSERT INTO ${table} (${col}) VALUES ($1) RETURNING *`;
+        const result = await pool.query(sql, [String(nome).trim()]);
+        const row = result.rows[0];
+        // Normaliza o campo nome na resposta
+        const normalized = { ...row, nome: row.nome || row.titulo || row.descricao };
+        return normalized;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+  }
+  throw lastErr || new Error('Falha ao inserir AtividadeGenerica');
 }
 
 // Rotas Execucao: listar registros de execução (com fallback de tabela)
@@ -362,6 +442,83 @@ app.get('/api/Execucao', async (req, res) => {
   }
 });
 
+// Debug: listar rotas registradas (somente para desenvolvimento)
+app.get('/api/_debug/routes', (req, res) => {
+  try {
+    const routes = [];
+    app._router.stack.forEach((m) => {
+      if (m.route) {
+        const methods = Object.keys(m.route.methods).filter(k => m.route.methods[k]);
+        routes.push({ methods, path: m.route.path });
+      } else if (m.name === 'router' && m.handle && m.handle.stack) {
+        m.handle.stack.forEach((h) => {
+          if (h.route) {
+            const methods = Object.keys(h.route.methods).filter(k => h.route.methods[k]);
+            routes.push({ methods, path: h.route.path });
+          }
+        });
+      }
+    });
+    res.json(routes);
+  } catch (e) {
+    res.status(500).json({ error: 'debug_failed', details: e.message });
+  }
+});
+
+// Rota: listar atividades genéricas
+app.get('/api/AtividadeGenerica', async (req, res) => {
+  try {
+    const rows = await selectAtividadeGenericaWithFallback(pool);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar AtividadeGenerica:', error);
+    res.status(500).json({ error: 'Erro ao buscar AtividadeGenerica', details: error.message });
+  }
+});
+// Alias minúsculo
+app.get('/api/atividadegenerica', async (req, res) => {
+  try {
+    const rows = await selectAtividadeGenericaWithFallback(pool);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar atividadegenerica:', error);
+    res.status(500).json({ error: 'Erro ao buscar atividadegenerica', details: error.message });
+  }
+});
+
+// Criar atividade genérica
+app.post('/api/AtividadeGenerica', async (req, res) => {
+  try {
+    const { nome } = req.body || {};
+    if (!nome || String(nome).trim().length === 0) {
+      return res.status(400).json({ error: 'Nome é obrigatório' });
+    }
+    const row = await insertAtividadeGenericaWithFallback(pool, { nome });
+    res.status(201).json(row);
+  } catch (error) {
+    console.error('Erro ao criar AtividadeGenerica:', error);
+    res.status(500).json({ error: 'Erro ao criar AtividadeGenerica', details: error.message });
+  }
+});
+// Alias minúsculo
+app.post('/api/atividadegenerica', async (req, res) => {
+  try {
+    const { nome } = req.body || {};
+    if (!nome || String(nome).trim().length === 0) {
+      return res.status(400).json({ error: 'Nome é obrigatório' });
+    }
+    const row = await insertAtividadeGenericaWithFallback(pool, { nome });
+    res.status(201).json(row);
+  } catch (error) {
+    console.error('Erro ao criar atividadegenerica:', error);
+    res.status(500).json({ error: 'Erro ao criar atividadegenerica', details: error.message });
+  }
+});
+
+// Preflight explícito (ajuda em ambientes que não tratam OPTIONS por padrão)
+app.options('/api/AtividadeGenerica', (req, res) => res.sendStatus(204));
+app.options('/api/atividadegenerica', (req, res) => res.sendStatus(204));
+
 // Atualiza status da Execução mais recente por planejamento (ex.: Pausar)
 app.post('/api/Execucao/pause', async (req, res) => {
   try {
@@ -375,7 +532,15 @@ app.post('/api/Execucao/pause', async (req, res) => {
     let lastErr = null;
     for (const table of candidates) {
       try {
-        const values = [desiredStatus, tempo_total != null ? parseInt(tempo_total) : null, parseInt(planejamento_id)];
+        // Normaliza tempo_total para horas com decimais fixos (texto)
+        const tempoHoras = (() => {
+          if (tempo_total === null || tempo_total === undefined) return null;
+          const n = Number(tempo_total);
+          if (Number.isNaN(n)) return null;
+          const horas = Math.max(0, n / 3600);
+          return horas.toFixed(4);
+        })();
+        const values = [desiredStatus, tempoHoras, parseInt(planejamento_id)];
         const sql = `UPDATE ${table}
           SET status = $1,
               tempo_total = COALESCE($2, tempo_total)
@@ -419,6 +584,84 @@ app.post('/api/Execucao/pause', async (req, res) => {
   } catch (error) {
     console.error('Erro ao pausar execução:', error);
     res.status(500).json({ error: 'Erro ao pausar execução', details: error.message });
+  }
+});
+
+// Finalizar última execução rápida (sem planejamento) por usuário
+app.post('/api/Execucao/finish-quick', async (req, res) => {
+  try {
+    const { usuario, tempo_total } = req.body || {};
+    if (!usuario) {
+      return res.status(400).json({ error: 'usuario é obrigatório' });
+    }
+    const candidates = ['public."Execucao"'];
+    let lastErr = null;
+    for (const table of candidates) {
+      try {
+        // Converter segundos do timer para horas e manter casas decimais como texto
+        // Armazenar como string garante visibilidade das casas (ex.: 0.00, 0.0400)
+        const tempoHoras = (() => {
+          if (tempo_total === null || tempo_total === undefined) return null;
+          const n = Number(tempo_total);
+          if (Number.isNaN(n)) return null;
+          const horas = Math.max(0, n / 3600);
+          // Use 4 casas para precisão; se preferir 2, troque para toFixed(2)
+          return horas.toFixed(4);
+        })();
+        const values = [
+          'finalizado',
+          new Date().toISOString(),
+          tempoHoras,
+          String(usuario)
+        ];
+        const sql = `UPDATE ${table}
+          SET status = $1,
+              termino = $2,
+              tempo_total = $3
+          WHERE ctid IN (
+            SELECT ctid FROM ${table}
+            WHERE (
+              planejamento_id IS NULL
+              OR NULLIF(CAST(planejamento_id AS TEXT), '') IS NULL
+              OR CAST(planejamento_id AS TEXT) = '0'
+            )
+              AND usuario = $4
+            ORDER BY inicio DESC NULLS LAST
+            LIMIT 1
+          )
+          RETURNING *`;
+        const result = await pool.query(sql, values);
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Nenhuma execução rápida encontrada para o usuário' });
+        }
+        return res.json(result.rows[0]);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    console.error('[Execucao/finish-quick] Falha ao finalizar execução rápida:', lastErr?.message || lastErr);
+    res.status(500).json({ error: 'Erro ao finalizar execução rápida', details: lastErr?.message || 'unknown' });
+  } catch (error) {
+    console.error('Erro ao finalizar execução rápida:', error);
+    res.status(500).json({ error: 'Erro interno do servidor', details: error.message });
+  }
+});
+
+// Preflight explícito para finish-quick
+app.options('/api/Execucao/finish-quick', (req, res) => res.sendStatus(204));
+
+// Endpoint de manutenção: normalizar planejamento_id vazio para NULL
+app.post('/api/_maintenance/normalize-execucao-planejamento', async (req, res) => {
+  try {
+    const table = 'public."Execucao"';
+    const sql = `UPDATE ${table}
+      SET planejamento_id = NULL
+      WHERE NULLIF(CAST(planejamento_id AS TEXT), '') IS NULL`;
+    const result = await pool.query(sql);
+    res.json({ updated: result.rowCount });
+  } catch (e) {
+    console.error('Manutenção Execucao planejamento_id:', e.message);
+    res.status(500).json({ error: 'maintenance_failed', details: e.message });
   }
 });
 
@@ -495,7 +738,13 @@ async function insertExecucaoFlexible(pool, payload) {
   // Tentativa 1: tabela public."Execucao" com colunas ricas
   try {
     const cols = ['atividade_nome', 'observacao', 'status', 'tempo_total', 'inicio'];
-    const vals = [payload.atividade_nome || 'Atividade', payload.observacao || '', payload.status || 'em_andamento', payload.tempo_total ?? 0, payload.inicio || new Date().toISOString()];
+    const tempoHorasStr = (() => {
+      const n = Number(payload.tempo_total ?? 0);
+      if (Number.isNaN(n)) return payload.tempo_total ?? 0;
+      const horas = Math.max(0, n / 3600);
+      return horas.toFixed(4);
+    })();
+    const vals = [payload.atividade_nome || 'Atividade', payload.observacao || '', payload.status || 'em_andamento', tempoHorasStr, payload.inicio || new Date().toISOString()];
     let sql = 'INSERT INTO public."Execucao" (atividade_nome, observacao, status, tempo_total, inicio';
     if (payload.termino) { sql += ', termino'; cols.push('termino'); vals.push(payload.termino); }
     if (payload.planejamento_atividade_id) { sql += ', planejamento_atividade_id'; cols.push('planejamento_atividade_id'); vals.push(parseInt(payload.planejamento_atividade_id)); }
@@ -522,7 +771,7 @@ async function insertExecucaoRobust(pool, payload) {
     payload.status ?? 'em_andamento',
     payload.inicio || new Date().toISOString(),
     payload.termino ?? null,
-    payload.tempo_total ?? 0,
+    (() => { const n = Number(payload.tempo_total ?? 0); if (Number.isNaN(n)) return payload.tempo_total ?? 0; const horas = Math.max(0, n / 3600); return horas.toFixed(4); })(),
     payload.atividade_nome || 'Atividade',
     payload.planejamento_id ?? null
   ];
@@ -572,7 +821,7 @@ async function insertExecucaoRobust(pool, payload) {
         status: payload.status ?? 'em_andamento',
         inicio: payload.inicio || new Date().toISOString(),
         termino: payload.termino ?? null,
-        tempo_total: payload.tempo_total ?? 0,
+        tempo_total: (() => { const n = Number(payload.tempo_total ?? 0); if (Number.isNaN(n)) return payload.tempo_total ?? 0; const horas = Math.max(0, n / 3600); return horas.toFixed(4); })(),
         atividade_nome: payload.atividade_nome || 'Atividade',
         documento_nome: payload.documento_nome || payload.atividade_nome || null,
         planejamento_id: payload.planejamento_id ?? null,
@@ -637,7 +886,7 @@ async function updateExecucaoRobust(pool, filtro, updates) {
       const mapping = {
         status: updates.status,
         termino: updates.termino,
-        tempo_total: updates.tempo_total,
+        tempo_total: (() => { if (updates.tempo_total === undefined) return undefined; const n = Number(updates.tempo_total); if (Number.isNaN(n)) return updates.tempo_total; const horas = Math.max(0, n); return horas.toFixed(4); })(),
         observacao: updates.observacao,
         observacoes: updates.observacao,
         observacao_texto: updates.observacao,
@@ -719,7 +968,7 @@ async function updateExecucaoByPlanejamentoLatest(pool, planejamentoId, updates)
   const mapping = {
     status: updates.status,
     termino: updates.termino,
-    tempo_total: updates.tempo_total,
+    tempo_total: (() => { if (updates.tempo_total === undefined) return undefined; const n = Number(updates.tempo_total); if (Number.isNaN(n)) return updates.tempo_total; const horas = Math.max(0, n); return horas.toFixed(4); })(),
     observacao: updates.observacao,
     observacoes: updates.observacao,
     observacao_texto: updates.observacao,
@@ -1150,11 +1399,11 @@ app.put('/api/planejamento-documentos/:id', async (req, res) => {
       }
       if (data.acao === 'finalizar' || data.status === 'concluido' || data.status === 'finalizado') {
         const tempoHoras = Number(updated.tempo_executado || 0);
-        const tempoSegundos = Math.max(0, Math.round(tempoHoras * 3600));
+        const tempoHorasStr = Math.max(0, tempoHoras).toFixed(4);
         const updates = {
           status: 'concluido',
           termino: updated.termino_real || new Date().toISOString(),
-          tempo_total: tempoSegundos,
+          tempo_total: tempoHorasStr,
           usuario,
           executor_principal: usuario,
           usuario_ajudado,
@@ -2306,24 +2555,39 @@ app.post('/api/Execucao', async (req, res) => {
       planejamentoIdInt
     });
 
-    // Validação básica
-    if (!empreendimento_id || !usuario || !status || !inicio || planejamentoIdInt === null) {
-      return res.status(400).json({ error: 'Campos obrigatórios faltando.' });
-    }
+    // Normalizar status para valores esperados na base
+    let statusNorm = (status || '').toString().toLowerCase();
+    if (statusNorm.includes('andamento')) statusNorm = 'em_andamento';
+    else if (statusNorm.includes('final')) statusNorm = 'finalizado';
+    else if (statusNorm.includes('paus') || statusNorm.includes('paral')) statusNorm = 'paralisado';
+    else if (!statusNorm) statusNorm = 'em_andamento';
+
+    // Preencher defaults amigáveis (evita 400 por campos ausentes)
+    const usuarioFinal = usuario || (req.user && req.user.email) || '';
+    const inicioFinal = inicio || new Date().toISOString();
+
+    // Normaliza tempo_total para horas com 4 casas decimais (texto)
+    const tempoTotalFinal = (() => {
+      if (tempo_total === null || tempo_total === undefined) return null;
+      const n = Number(tempo_total);
+      if (Number.isNaN(n)) return null;
+      const horas = Math.max(0, n / 3600);
+      return horas.toFixed(4);
+    })();
 
     const result = await pool.query(
-      `INSERT INTO "Execucao" (
+      `INSERT INTO public."Execucao" (
         empreendimento_id, usuario, usuario_ajudado, observacao, status, inicio, termino, tempo_total, atividade_nome, planejamento_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [
-        empreendimento_id,
-        usuario,
-        usuario_ajudado,
-        observacao,
-        status,
-        inicio,
-        termino,
-        tempo_total,
+        empreendimento_id ?? null,
+        usuarioFinal,
+        usuario_ajudado ?? null,
+        observacao ?? null,
+        statusNorm,
+        inicioFinal,
+        termino ?? null,
+        tempoTotalFinal ?? null,
         atividadeNome,
         planejamentoIdInt
       ]

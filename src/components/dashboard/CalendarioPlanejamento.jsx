@@ -232,9 +232,30 @@ const CalendarFilters = ({
         {/* Controles de Visualização */}
         {hasSelectedUser && (
           <div className="flex items-center gap-2">
-            <Button variant={viewMode === 'day' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('day')}>Dia</Button>
-            <Button variant={viewMode === 'week' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('week')}>Semana</Button>
-            <Button variant={viewMode === 'month' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('month')}>Mês</Button>
+            <Button
+              variant={viewMode === 'day' ? 'default' : 'outline'}
+              size="sm"
+              className={viewMode === 'day' ? 'text-white' : ''}
+              onClick={() => onViewModeChange('day')}
+            >
+              Dia
+            </Button>
+            <Button
+              variant={viewMode === 'week' ? 'default' : 'outline'}
+              size="sm"
+              className={viewMode === 'week' ? 'text-white' : ''}
+              onClick={() => onViewModeChange('week')}
+            >
+              Semana
+            </Button>
+            <Button
+              variant={viewMode === 'month' ? 'default' : 'outline'}
+              size="sm"
+              className={viewMode === 'month' ? 'text-white' : ''}
+              onClick={() => onViewModeChange('month')}
+            >
+              Mês
+            </Button>
           </div>
         )}
       </div>

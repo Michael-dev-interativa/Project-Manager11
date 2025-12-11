@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Usuario } from '@/entities/all';
+import ExecucaoModal from '@/components/ExecucaoModal';
 
 const ActivityTimerContext = createContext();
 
@@ -28,7 +29,7 @@ const useIdleDetection = (timeoutMs = 300000) => { // 5 minutos
 
   useEffect(() => {
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    
+
     const handleActivity = () => resetTimer();
 
     events.forEach(event => {
@@ -59,7 +60,7 @@ const IdleWarningModal = ({ isOpen, onContinue, onStop, timeLeft }) => {
       <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
         <h3 className="text-lg font-semibold mb-4">Você ainda está trabalhando?</h3>
         <p className="text-gray-600 mb-4">
-          Detectamos que você está inativo há algum tempo. 
+          Detectamos que você está inativo há algum tempo.
           O timer será pausado automaticamente em {timeLeft} segundos.
         </p>
         <div className="flex gap-3">
@@ -121,18 +122,22 @@ export const ActivityTimerProvider = ({ children }) => {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [activities, setActivities] = useState([]);
-  
+
   // Estados para modais
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState(null);
   const [idleWarningTimeLeft, setIdleWarningTimeLeft] = useState(30);
-  
+
   // Refs para controle
   const isInitialized = useRef(false);
   const timerInterval = useRef(null);
   const startTime = useRef(null);
   const idleWarningInterval = useRef(null);
+
+  // Execução Modal (para atividades rápidas ou gatilhos externos)
+  const [execucaoModalOpen, setExecucaoModalOpen] = useState(false);
+  const [execucaoModalActivity, setExecucaoModalActivity] = useState(null);
 
   // Hook de detecção de inatividade
   const { isIdle, resetTimer } = useIdleDetection(300000); // 5 minutos
@@ -151,7 +156,7 @@ export const ActivityTimerProvider = ({ children }) => {
       // Buscar dados do usuário
       const userData = await Usuario.me();
       console.log('✅ Usuário carregado:', userData);
-      
+
       setUser(userData);
       setIsAuthenticated(true);
       isInitialized.current = true;
@@ -171,18 +176,18 @@ export const ActivityTimerProvider = ({ children }) => {
       // Verificar se havia uma atividade em andamento
       const currentActivityData = localStorage.getItem('currentActivity');
       const savedStartTime = localStorage.getItem('activityStartTime');
-      
+
       if (currentActivityData && savedStartTime) {
         try {
           const activity = JSON.parse(currentActivityData);
           const savedTime = parseInt(savedStartTime);
           const elapsed = Math.floor((Date.now() - savedTime) / 1000);
-          
+
           setCurrentActivity(activity);
           setElapsedTime(elapsed);
           setIsTimerRunning(true);
           startTime.current = savedTime;
-          
+
           console.log('🔄 Atividade em andamento restaurada:', activity.nome || activity.descritivo, `${elapsed}s`);
         } catch (error) {
           console.error('❌ Erro ao restaurar atividade em andamento:', error);
@@ -208,7 +213,7 @@ export const ActivityTimerProvider = ({ children }) => {
     }
 
     console.log('▶️ Iniciando atividade:', activity.nome || activity.descritivo);
-    
+
     const now = Date.now();
     setCurrentActivity(activity);
     setIsTimerRunning(true);
@@ -232,10 +237,10 @@ export const ActivityTimerProvider = ({ children }) => {
     }
 
     console.log('⏸️ Parando atividade:', currentActivity.nome || currentActivity.descritivo);
-    
+
     const endTime = Date.now();
     const totalTime = Math.floor((endTime - startTime.current) / 1000);
-    
+
     const completedActivity = {
       ...currentActivity,
       startTime: startTime.current,
@@ -305,7 +310,7 @@ export const ActivityTimerProvider = ({ children }) => {
     if (isIdle && isTimerRunning) {
       setShowIdleWarning(true);
       setIdleWarningTimeLeft(30);
-      
+
       idleWarningInterval.current = setInterval(() => {
         setIdleWarningTimeLeft(prev => {
           if (prev <= 1) {
@@ -358,7 +363,7 @@ export const ActivityTimerProvider = ({ children }) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
@@ -366,10 +371,10 @@ export const ActivityTimerProvider = ({ children }) => {
   const getStats = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
     const todayActivities = activities.filter(activity => activity.date === today);
-    
+
     const totalTimeToday = todayActivities.reduce((total, activity) => total + activity.duration, 0);
     const totalActivitiesToday = todayActivities.length;
-    
+
     return {
       totalTimeToday,
       totalActivitiesToday,
@@ -386,7 +391,7 @@ export const ActivityTimerProvider = ({ children }) => {
     isTimerRunning,
     elapsedTime,
     activities,
-    
+
     // Funções
     startActivity,
     stopActivity,
@@ -395,7 +400,28 @@ export const ActivityTimerProvider = ({ children }) => {
     formatTime,
     getStats,
     initializeTimer,
-    
+    // Abertura de modal de execução a partir de qualquer lugar
+    openExecutionModal: (payload) => {
+      // payload esperado: { descritivo, atividade_nome, empreendimento_id, usuario, usuario_ajudado, status, inicio, planejamento_id }
+      const atividade = {
+        descritivo: payload?.descritivo || payload?.atividade_nome || 'Atividade',
+        atividade_nome: payload?.atividade_nome || payload?.descritivo || 'Atividade',
+        empreendimento_id: payload?.empreendimento_id ?? null,
+        usuario: payload?.usuario || '',
+        usuario_ajudado: payload?.usuario_ajudado || '',
+        status: payload?.status || 'em_andamento',
+        inicio: payload?.inicio || new Date().toISOString(),
+        planejamento_id: payload?.planejamento_id ?? null,
+        tipo: 'atividade'
+      };
+      setExecucaoModalActivity(atividade);
+      setExecucaoModalOpen(true);
+    },
+    closeExecutionModal: () => {
+      setExecucaoModalOpen(false);
+      setExecucaoModalActivity(null);
+    },
+
     // Utilitários
     setUser,
     setIsAuthenticated
@@ -404,7 +430,7 @@ export const ActivityTimerProvider = ({ children }) => {
   return (
     <ActivityTimerContext.Provider value={value}>
       {children}
-      
+
       {/* Modais */}
       <IdleWarningModal
         isOpen={showIdleWarning}
@@ -424,7 +450,7 @@ export const ActivityTimerProvider = ({ children }) => {
         }}
         timeLeft={idleWarningTimeLeft}
       />
-      
+
       <ConfirmDeleteModal
         isOpen={showDeleteConfirm}
         onConfirm={confirmDeleteActivity}
@@ -433,11 +459,28 @@ export const ActivityTimerProvider = ({ children }) => {
           setActivityToDelete(null);
         }}
         activityName={
-          activityToDelete !== null 
-            ? activities[activityToDelete]?.nome || activities[activityToDelete]?.descritivo || 'Atividade' 
+          activityToDelete !== null
+            ? activities[activityToDelete]?.nome || activities[activityToDelete]?.descritivo || 'Atividade'
             : ''
         }
       />
+
+      {/* Modal de execução global controlado pelo contexto */}
+      {execucaoModalOpen && (
+        <ExecucaoModal
+          atividade={execucaoModalActivity}
+          onClose={() => {
+            setExecucaoModalOpen(false);
+            setExecucaoModalActivity(null);
+          }}
+          onPause={() => { /* opcional: poderíamos persistir status em Execucao aqui */ }}
+          onFinish={() => {
+            setExecucaoModalOpen(false);
+            setExecucaoModalActivity(null);
+          }}
+          onReload={() => { /* noop para atividades rápidas */ }}
+        />
+      )}
     </ActivityTimerContext.Provider>
   );
 };

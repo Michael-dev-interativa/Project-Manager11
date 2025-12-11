@@ -175,11 +175,10 @@ function CurvaS() {
 
   function pathFromSeries(series, color) {
     if (!series.length) return null;
-    // Se houver só um ponto, desenha um marcador visível
+    // Caso tenha só um ponto, desenha uma linha horizontal para dar visibilidade
     if (series.length === 1) {
-      const cx = xScale(0, 1);
-      const cy = yScale(series[0].y);
-      return <circle cx={cx} cy={cy} r={3} fill={color} />;
+      const y = yScale(series[0].y);
+      return <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke={color} strokeWidth="2" />;
     }
     const d = series.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i, series.length)} ${yScale(pt.y)}`).join(' ');
     return <path d={d} fill="none" stroke={color} strokeWidth="2" />;

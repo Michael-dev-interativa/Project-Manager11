@@ -90,6 +90,30 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
     try {
       console.log('[FINALIZAR] Clique no botão Finalizar:', atividade);
       let registroAtual = null;
+      // Para atividades rápidas (sem planejamento), finalizar via API de Execucao
+      if (!atividade.id && (atividade.tipo === 'atividade' || (!atividade.tipo && atividade.descritivo))) {
+        const horasTimer = Number((segundos / 3600).toFixed(4));
+        const tempoSeg = Math.max(0, Math.round(horasTimer * 3600));
+        try {
+          const resp = await fetch('http://localhost:3001/api/Execucao/finish-quick', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuario: atividade.usuario || '', tempo_total: tempoSeg })
+          });
+          if (!resp.ok) {
+            const errText = await resp.text();
+            alert('Erro ao finalizar atividade rápida: ' + errText);
+            return;
+          }
+        } catch (e) {
+          alert('Erro ao finalizar atividade rápida: ' + (e?.message || e));
+          return;
+        }
+        onFinish && onFinish({ ...atividade, status: 'finalizado' });
+        try { window.dispatchEvent(new CustomEvent('execucao:updated')); } catch { }
+        onReload && onReload();
+        return;
+      }
       if (atividade.atividade_id || atividade.tipo === 'atividade') {
         registroAtual = await PlanejamentoAtividade.filter ? await PlanejamentoAtividade.filter({ id: atividade.id }) : atividade;
         console.log('[FINALIZAR] Registro atual PlanejamentoAtividade:', registroAtual);

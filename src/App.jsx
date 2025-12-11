@@ -12,6 +12,7 @@ import EmpreendimentoDetalhes from './pages/EmpreendimentoDetalhes';
 import Planejamento from './pages/Planejamento';
 import SeletorPlanejamento from './pages/SeletorPlanejamento';
 import Relatorios from './pages/Relatorios';
+import AtividadesRapidas from './pages/AtividadesRapidas';
 import AnaliseConcepcao from './pages/AnaliseConcepcao';
 import Configuracoes from './pages/Configuracoes';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -75,6 +76,9 @@ function App() {
                         } />
                         <Route path="/relatorios" element={
                           <ProtectedRoute><Relatorios /></ProtectedRoute>
+                        } />
+                        <Route path="/atividades-rapidas" element={
+                          <ProtectedRoute><AtividadesRapidas /></ProtectedRoute>
                         } />
                         <Route path="/analise-concepcao" element={
                           <ProtectedRoute><AnaliseConcepcao /></ProtectedRoute>

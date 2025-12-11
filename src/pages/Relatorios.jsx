@@ -3,11 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Download, FileText, BarChart3, TrendingUp, AlertCircle, Building2, User as UserIcon, MessageSquare } from 'lucide-react';
 
-import { Execucao, Usuario, Empreendimento, Atividade, Documento, PlanejamentoAtividade } from "@/entities/all";
+// Removido uso de entidades locais; vamos consumir o backend via REST
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import StatusBadge from "@/components/relatorios/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { format, startOfMonth, endOfMonth, parseISO, isAfter, isBefore, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
@@ -22,8 +23,8 @@ export default function Relatorios() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtros, setFiltros] = useState({
-    usuario: '',
-    empreendimento: '',
+    usuario: 'all',
+    empreendimento: 'all',
     periodo: 'mes'
   });
   const [dataInicio, setDataInicio] = useState(startOfMonth(new Date()));
@@ -38,11 +39,36 @@ export default function Relatorios() {
     setError(null);
 
     try {
-      const [usuariosData, empreendimentosData, execucoesData] = await Promise.all([
-        Usuario.list(),
-        Empreendimento.list(),
-        Execucao.list()
+      // Busca via backend local
+      const [usuariosRes, empreendimentosRes, execucoesRes] = await Promise.all([
+        fetch('http://localhost:3001/api/Usuario', { credentials: 'include' }),
+        fetch('http://localhost:3001/api/Empreendimento', { credentials: 'include' }),
+        fetch('http://localhost:3001/api/Execucao', { credentials: 'include' })
       ]);
+
+      if (!usuariosRes.ok || !empreendimentosRes.ok || !execucoesRes.ok) {
+        throw new Error('Falha ao buscar dados do backend');
+      }
+
+      const usuariosData = await usuariosRes.json();
+      const empreendimentosData = await empreendimentosRes.json();
+      const execucoesRaw = await execucoesRes.json();
+
+      // Normalizações:
+      // - `usuario`: pode vir em diferentes colunas; backend já normaliza
+      // - `tempo_total`: segundos -> horas
+      // - `data_execucao`: derivar de `inicio` quando disponível
+      const execucoesData = (execucoesRaw || []).map(e => {
+        const tempoSeg = Number(e.tempo_total || 0);
+        const horas = tempoSeg > 0 ? (tempoSeg / 3600) : 0;
+        const inicioISO = e.inicio || e.data_execucao || null;
+        return {
+          ...e,
+          horas_executadas: Number(horas.toFixed(2)),
+          data_execucao: inicioISO || null,
+          usuario_id: e.usuario_id ?? null, // pode não existir; usamos `usuario` como string
+        };
+      });
 
       setUsuarios(usuariosData || []);
       setEmpreendimentos(empreendimentosData || []);
@@ -64,7 +90,7 @@ export default function Relatorios() {
 
   const handlePeriodoChange = useCallback((periodo) => {
     const today = new Date();
-    
+
     switch (periodo) {
       case 'semana':
         setDataInicio(startOfWeek(today, { locale: ptBR }));
@@ -80,31 +106,26 @@ export default function Relatorios() {
       default:
         break;
     }
-    
+
     handleFilterChange('periodo', periodo);
   }, [handleFilterChange]);
 
-  const exportarRelatorio = useCallback(async (formato = 'csv') => {
-    try {
-      console.log('Exportando relatório em formato:', formato);
-      // Aqui você implementaria a lógica de exportação
-      alert(`Exportação em ${formato.toUpperCase()} será implementada em breve`);
-    } catch (error) {
-      console.error('Erro ao exportar relatório:', error);
-    }
-  }, []);
-
+  // Mover aplicação de filtros para cima para evitar TDZ
   const aplicarFiltros = useCallback(() => {
     if (!execucoes.length) return [];
 
     return execucoes.filter(execucao => {
       // Filtro por usuário
-      if (filtros.usuario && execucao.usuario_id !== parseInt(filtros.usuario)) {
-        return false;
+      if (filtros.usuario && filtros.usuario !== 'all') {
+        // Tenta comparar por id se existir; senão, compara por email/nome quando disponível
+        const idMatch = execucao.usuario_id && execucao.usuario_id === parseInt(filtros.usuario);
+        const usuarioObj = usuarios.find(u => u.id?.toString() === filtros.usuario);
+        const strMatch = usuarioObj && (execucao.usuario === usuarioObj.email || execucao.usuario === usuarioObj.nome);
+        if (!idMatch && !strMatch) return false;
       }
 
       // Filtro por empreendimento
-      if (filtros.empreendimento && execucao.empreendimento_id !== parseInt(filtros.empreendimento)) {
+      if (filtros.empreendimento && filtros.empreendimento !== 'all' && execucao.empreendimento_id !== parseInt(filtros.empreendimento)) {
         return false;
       }
 
@@ -119,7 +140,123 @@ export default function Relatorios() {
 
       return true;
     });
-  }, [execucoes, filtros, dataInicio, dataFim]);
+  }, [execucoes, filtros, dataInicio, dataFim, usuarios]);
+
+  const exportarRelatorio = useCallback((formato = 'csv') => {
+    try {
+      const execs = aplicarFiltros();
+      const rows = execs.map(exec => {
+        const usuarioNome = usuarios.find(u => u.id === exec.usuario_id)?.nome || exec.usuario || 'N/A';
+        const empreendimentoNome = empreendimentos.find(e => e.id === exec.empreendimento_id)?.nome || 'N/A';
+        const dataStr = exec.data_execucao ? format(parseISO(exec.data_execucao), 'dd/MM/yyyy', { locale: ptBR }) : 'N/A';
+        return {
+          Data: dataStr,
+          Usuário: usuarioNome,
+          Empreendimento: empreendimentoNome,
+          Atividade: exec.atividade || exec.atividade_nome || '-',
+          Horas: (exec.horas_executadas || 0).toFixed(2),
+          Status: exec.status || 'Pendente'
+        };
+      });
+
+      if (formato === 'csv') {
+        // Usar delimitador ';' (Excel pt-BR) e BOM para evitar problemas de acentuação
+        const headers = Object.keys(rows[0] || { Data: '', Usuário: '', Empreendimento: '', Atividade: '', Horas: '', Status: '' });
+        const delimiter = ';';
+        const escapeCell = (val) => {
+          const s = String(val ?? '')
+            .replace(/\r?\n/g, ' ')
+            .replace(/"/g, '""');
+          return /[";\n]/.test(s) ? `"${s}"` : s;
+        };
+        const csvBody = [headers.join(delimiter)]
+          .concat(
+            rows.map(r => headers.map(h => escapeCell(r[h])).join(delimiter))
+          )
+          .join('\r\n');
+        const bom = '\uFEFF';
+        const blob = new Blob([bom + csvBody], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `relatorio_execucoes_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      if (formato === 'pdf') {
+        // Exportação simples via impressão do conteúdo em uma nova janela
+        const htmlTable = `
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Relatório de Execuções</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 16px; }
+                h1 { font-size: 18px; margin-bottom: 12px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+                th { background: #f5f5f5; text-align: left; }
+              </style>
+            </head>
+            <body>
+              <h1>Relatório de Execuções</h1>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Usuário</th>
+                    <th>Empreendimento</th>
+                    <th>Atividade</th>
+                    <th>Horas</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map(r => `
+                    <tr>
+                      <td>${r.Data}</td>
+                      <td>${r["Usuário"]}</td>
+                      <td>${r.Empreendimento}</td>
+                      <td>${r.Atividade}</td>
+                      <td>${r.Horas}</td>
+                      <td>${r.Status}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              <script>window.onload = () => { window.print(); }<\/script>
+            </body>
+          </html>`;
+        const win = window.open('', '_blank');
+        if (win) {
+          win.document.open();
+          win.document.write(htmlTable);
+          win.document.close();
+        }
+        return;
+      }
+    } catch (error) {
+      console.error('Erro ao exportar relatório:', error);
+      alert('Erro ao exportar relatório.');
+    }
+  }, [usuarios, empreendimentos, aplicarFiltros]);
+
+  // Helper para normalizar e exibir status amigável
+  const formatStatus = useCallback((exec) => {
+    let s = exec.status || exec.estado || exec.situacao || '';
+    if (!s) {
+      const hasTermino = !!exec.termino;
+      const hasTempo = (exec.tempo_total ?? 0) > 0;
+      if (hasTermino && hasTempo) s = 'concluido';
+      else if (hasTempo && !hasTermino) s = 'em_andamento';
+      else s = 'pendente';
+    }
+    return s;
+  }, []);
 
   const execucoesFiltradas = aplicarFiltros();
 
@@ -133,7 +270,6 @@ export default function Relatorios() {
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -150,7 +286,7 @@ export default function Relatorios() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 md:px-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -172,7 +308,7 @@ export default function Relatorios() {
       </div>
 
       {/* Filtros */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5" />
@@ -184,15 +320,15 @@ export default function Relatorios() {
             {/* Filtro por Usuário */}
             <div className="space-y-2">
               <Label>Usuário</Label>
-              <Select 
-                value={filtros.usuario} 
+              <Select
+                value={filtros.usuario}
                 onValueChange={(value) => handleFilterChange('usuario', value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todos os usuários" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os usuários</SelectItem>
+                  <SelectItem value="all">Todos os usuários</SelectItem>
                   {usuarios.map(usuario => (
                     <SelectItem key={usuario.id} value={usuario.id.toString()}>
                       {usuario.nome}
@@ -205,15 +341,15 @@ export default function Relatorios() {
             {/* Filtro por Empreendimento */}
             <div className="space-y-2">
               <Label>Empreendimento</Label>
-              <Select 
-                value={filtros.empreendimento} 
+              <Select
+                value={filtros.empreendimento}
                 onValueChange={(value) => handleFilterChange('empreendimento', value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todos os empreendimentos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os empreendimentos</SelectItem>
+                  <SelectItem value="all">Todos os empreendimentos</SelectItem>
                   {empreendimentos.map(emp => (
                     <SelectItem key={emp.id} value={emp.id.toString()}>
                       {emp.nome}
@@ -226,8 +362,8 @@ export default function Relatorios() {
             {/* Filtro por Período */}
             <div className="space-y-2">
               <Label>Período</Label>
-              <Select 
-                value={filtros.periodo} 
+              <Select
+                value={filtros.periodo}
                 onValueChange={handlePeriodoChange}
               >
                 <SelectTrigger>
@@ -243,8 +379,8 @@ export default function Relatorios() {
 
             {/* Botão de aplicar filtros */}
             <div className="flex items-end">
-              <Button 
-                onClick={loadData} 
+              <Button
+                onClick={loadData}
                 className="w-full"
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -265,12 +401,23 @@ export default function Relatorios() {
                       {dataInicio ? format(dataInicio, 'dd/MM/yyyy', { locale: ptBR }) : 'Selecionar data'}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-80 md:w-96 p-2 z-50 bg-white shadow-lg rounded-md" align="start" side="bottom" sideOffset={8}>
                     <Calendar
                       mode="single"
                       selected={dataInicio}
                       onSelect={setDataInicio}
                       locale={ptBR}
+                      className="rounded-md border border-gray-200"
+                      classNames={{
+                        caption: 'text-center font-medium',
+                        nav_button: 'rounded-md hover:bg-gray-100',
+                        head_cell: 'text-gray-500 text-xs font-medium',
+                        table: 'w-full',
+                        row: 'mt-2',
+                        day: 'rounded-md hover:bg-gray-100 transition-colors',
+                        day_selected: 'bg-blue-600 text-white rounded-md hover:bg-blue-700',
+                        day_today: 'border border-gray-300',
+                      }}
                     />
                   </PopoverContent>
                 </Popover>
@@ -285,12 +432,23 @@ export default function Relatorios() {
                       {dataFim ? format(dataFim, 'dd/MM/yyyy', { locale: ptBR }) : 'Selecionar data'}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent className="w-80 md:w-96 p-2 z-50 bg-white shadow-lg rounded-md" align="start" side="bottom" sideOffset={8}>
                     <Calendar
                       mode="single"
                       selected={dataFim}
                       onSelect={setDataFim}
                       locale={ptBR}
+                      className="rounded-md border border-gray-200"
+                      classNames={{
+                        caption: 'text-center font-medium',
+                        nav_button: 'rounded-md hover:bg-gray-100',
+                        head_cell: 'text-gray-500 text-xs font-medium',
+                        table: 'w-full',
+                        row: 'mt-2',
+                        day: 'rounded-md hover:bg-gray-100 transition-colors',
+                        day_selected: 'bg-blue-600 text-white rounded-md hover:bg-blue-700',
+                        day_today: 'border border-gray-300',
+                      }}
                     />
                   </PopoverContent>
                 </Popover>
@@ -300,18 +458,16 @@ export default function Relatorios() {
         </CardContent>
       </Card>
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Cards de Resumo no estilo desejado */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Execuções</CardTitle>
+            <CardTitle className="text-sm font-medium">Total de Atividades</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{execucoesFiltradas.length}</div>
-            <p className="text-xs text-muted-foreground">
-              No período selecionado
-            </p>
+            <p className="text-xs text-muted-foreground">No período selecionado</p>
           </CardContent>
         </Card>
 
@@ -324,24 +480,36 @@ export default function Relatorios() {
             <div className="text-2xl font-bold">
               {execucoesFiltradas.reduce((total, exec) => total + (exec.horas_executadas || 0), 0).toFixed(1)}h
             </div>
-            <p className="text-xs text-muted-foreground">
-              Tempo total executado
-            </p>
+            <p className="text-xs text-muted-foreground">Tempo total executado</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usuários Ativos</CardTitle>
+            <CardTitle className="text-sm font-medium">Atividades Atrasadas</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {execucoesFiltradas.filter(e => String(e.status || '').toLowerCase().includes('atras')).length}
+            </div>
+            <p className="text-xs text-muted-foreground">Somatório no período</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Atividades Concluídas</CardTitle>
             <UserIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {new Set(execucoesFiltradas.map(exec => exec.usuario_id)).size}
+              {execucoesFiltradas.filter(e => {
+                const s = String(e.status || '').toLowerCase();
+                return s === 'concluido' || s === 'finalizado' || s === 'concluida';
+              }).length}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Usuários únicos
-            </p>
+            <p className="text-xs text-muted-foreground">Finalizadas no período</p>
           </CardContent>
         </Card>
       </div>
@@ -383,20 +551,18 @@ export default function Relatorios() {
                         {execucao.data_execucao ? format(parseISO(execucao.data_execucao), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
                       </td>
                       <td className="p-4">
-                        {usuarios.find(u => u.id === execucao.usuario_id)?.nome || '-'}
+                        {usuarios.find(u => u.id === execucao.usuario_id)?.nome || execucao.usuario || '-'}
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <Building2 className="h-4 w-4 text-gray-400" />
-                          {empreendimentos.find(e => e.id === execucao.empreendimento_id)?.nome || '-'}
+                          {empreendimentos.find(e => e.id === execucao.empreendimento_id)?.nome || execucao.empreendimento_nome || '-'}
                         </div>
                       </td>
-                      <td className="p-4">{execucao.atividade || '-'}</td>
-                      <td className="p-4">{execucao.horas_executadas || 0}h</td>
+                      <td className="p-4">{execucao.atividade || execucao.atividade_nome || execucao.documento_nome || execucao.descritivo || '-'}</td>
+                      <td className="p-4">{(execucao.horas_executadas || 0).toFixed(2)}h</td>
                       <td className="p-4">
-                        <Badge variant={execucao.status === 'concluida' ? 'success' : 'secondary'}>
-                          {execucao.status || 'Pendente'}
-                        </Badge>
+                        <StatusBadge status={formatStatus(execucao)} />
                       </td>
                     </tr>
                   ))}
