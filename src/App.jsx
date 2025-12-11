@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import CurvaS from './pages/CurvaS.jsx';
 import { ActivityTimerProvider } from './components/contexts/ActivityTimerContext';
 import { UserProvider } from './components/contexts/UserContext';
 import { ExecucaoProvider } from './components/contexts/ExecucaoContext';
@@ -53,6 +54,9 @@ function App() {
                         <Route path="/login" element={<Login />} />
                         <Route path="/" element={
                           <ProtectedRoute><Dashboard /></ProtectedRoute>
+                        } />
+                        <Route path="/curva-s" element={
+                          <ProtectedRoute><CurvaS /></ProtectedRoute>
                         } />
                         <Route path="/usuarios" element={
                           <ProtectedRoute><Usuarios /></ProtectedRoute>

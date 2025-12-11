@@ -1,8 +1,27 @@
 import React, { useState, useEffect, useMemo, useCallback, useContext } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  parseISO,
+  isValid,
+  isAfter,
+  startOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  addMonths,
+  addWeeks,
+  addDays,
+  subMonths,
+  subWeeks,
+  subDays,
+  format
+} from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 import { DndContext } from "@dnd-kit/core";
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, parseISO, addWeeks, subWeeks, addDays, subDays, startOfDay, isValid, isAfter } from "date-fns";
-import { ptBR } from "date-fns/locale";
+
 import { motion, AnimatePresence } from 'framer-motion';
 import { ActivityTimerContext } from '../contexts/ActivityTimerContext';
 import { useExecucaoModal } from '../contexts/ExecucaoContext';
@@ -146,58 +165,80 @@ const CalendarFilters = ({
   // Considera carregando apenas enquanto a lista de usuários não está disponível
   const isLoading = !users;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-gray-100 bg-gray-50/50">
-      <div className="flex flex-wrap items-center gap-4">
-        <Filter className="w-5 h-5 text-gray-500" />
-        {isLoading ? (
-          <span className="text-sm text-gray-400">Carregando filtros...</span>
-        ) : (
-          <>
-            {/* Não mostrar o filtro de usuário para colaborador */}
-            {!isColaborador && (
-              <Select value={filters.user} onValueChange={(value) => onFilterChange('user', value)}>
-                <SelectTrigger className={`w-48 ${!hasSelectedUser && filters.user === '' ? 'border-red-300 bg-red-50' : 'bg-white'}`}>
-                  <SelectValue placeholder="⚠️ Selecione um usuário" />
-                </SelectTrigger>
-                <SelectContent>
-                  {usersOrdenados.map(user => (
-                    <SelectItem key={user.id} value={user.email}>{user.nome || user.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {hasSelectedUser && (
-              <>
-                <Select value={filters.discipline} onValueChange={(value) => onFilterChange('discipline', value)}>
-                  <SelectTrigger className="w-48 bg-white">
-                    <SelectValue placeholder="Filtrar por disciplina" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(disciplines || []).map(disc => (
-                      <SelectItem key={disc.id} value={disc.nome}>{disc.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {(filters.discipline !== 'all' || (!isColaborador && filters.user !== '')) && (
-                  <Button variant="ghost" size="sm" onClick={onClearFilters} className="text-red-500 hover:text-red-600">
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Limpar Filtros
-                  </Button>
-                )}
-              </>
-            )}
-          </>
+    <>
+      {/* Abas: Calendário (ativo) e Curva S */}
+      <div className="flex items-center gap-4 p-3 mb-2 bg-white border border-gray-200 rounded-xl">
+        <Link to="/" className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold bg-gray-900 text-white">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2a1 1 0 011 1v1h8V3a1 1 0 112 0v1h1a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h1V3a1 1 0 112 0v1zm12 6H5v10h14V8z" /></svg>
+          Calendário
+        </Link>
+        <Link to="/curva-s" className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-800 hover:bg-gray-100">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18" /><path d="M6 15c3-6 6-6 9-3 3 3 3 3 3 3" /></svg>
+          Curva S
+        </Link>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-gray-100 bg-gray-50/50">
+        <div className="flex flex-wrap items-center gap-4">
+          <Filter className="w-5 h-5 text-gray-500" />
+          {isLoading ? (
+            <span className="text-sm text-gray-400">Carregando filtros...</span>
+          ) : (
+            <>
+              {/* Não mostrar o filtro de usuário para colaborador */}
+              {!isColaborador && (
+                (() => {
+                  const selectedUserLabel = usersOrdenados.find(u => u.email === filters.user)?.nome || (filters.user || '');
+                  return (
+                    <Select value={filters.user} onValueChange={(value) => onFilterChange('user', value)}>
+                      <SelectTrigger className={`w-56 ${!hasSelectedUser && filters.user === '' ? 'border-red-300 bg-red-50' : 'bg-white'} text-gray-800`}>
+                        {filters.user ? (
+                          <span className="truncate" title={selectedUserLabel}>{selectedUserLabel}</span>
+                        ) : (
+                          <SelectValue placeholder="⚠️ Selecione um usuário" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {usersOrdenados.map(user => (
+                          <SelectItem key={user.id} value={user.email}>{user.nome || user.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  );
+                })()
+              )}
+              {hasSelectedUser && (
+                <>
+                  <Select value={filters.discipline} onValueChange={(value) => onFilterChange('discipline', value)}>
+                    <SelectTrigger className="w-56 bg-white text-gray-800">
+                      <SelectValue placeholder="Filtrar por disciplina" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(disciplines || []).map(disc => (
+                        <SelectItem key={disc.id} value={disc.nome}>{disc.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(filters.discipline !== 'all' || (!isColaborador && filters.user !== '')) && (
+                    <Button variant="ghost" size="sm" onClick={onClearFilters} className="text-red-500 hover:text-red-600">
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Limpar Filtros
+                    </Button>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+        {/* Controles de Visualização */}
+        {hasSelectedUser && (
+          <div className="flex items-center gap-2">
+            <Button variant={viewMode === 'day' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('day')}>Dia</Button>
+            <Button variant={viewMode === 'week' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('week')}>Semana</Button>
+            <Button variant={viewMode === 'month' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('month')}>Mês</Button>
+          </div>
         )}
       </div>
-      {/* Controles de Visualização */}
-      {hasSelectedUser && (
-        <div className="flex items-center gap-2">
-          <Button variant={viewMode === 'day' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('day')}>Dia</Button>
-          <Button variant={viewMode === 'week' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('week')}>Semana</Button>
-          <Button variant={viewMode === 'month' ? 'default' : 'outline'} size="sm" onClick={() => onViewModeChange('month')}>Mês</Button>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 {
