@@ -6,7 +6,9 @@ import PavimentosTab from "../components/empreendimento/PavimentosTab";
 import AtividadesProjetoTab from "../components/empreendimento/AtividadesProjetoTab";
 import AnaliticoGlobalTab from "../components/empreendimento/AnaliticoGlobalTab";
 import AnaliseEtapasTab from "../components/empreendimento/AnaliseEtapasTab";
-import { Empreendimento, Usuario, Documento, Atividade, Disciplina } from "../entities/all";
+import GestaoTab from "../components/empreendimento/GestaoTab";
+import { Empreendimento, Usuario, Documento, Atividade, Disciplina, PlanejamentoAtividade, PlanejamentoDocumento, Execucao } from "../entities/all";
+import { Pavimento } from "../entities/Pavimento";
 
 const EmpreendimentoDetalhes = () => {
   const { id } = useParams();
@@ -17,7 +19,11 @@ const EmpreendimentoDetalhes = () => {
   const [usuarios, setUsuarios] = useState([]);
   const [documentosState, setDocumentosState] = useState([]);
   const [atividadesState, setAtividadesState] = useState([]);
+  const [atividadesCatalogo, setAtividadesCatalogo] = useState([]);
   const [disciplinas, setDisciplinas] = useState([]);
+  const [planejamentos, setPlanejamentos] = useState([]); // PlanejamentoDocumento
+  const [execucoes, setExecucoes] = useState([]);
+  const [pavimentos, setPavimentos] = useState([]);
   // Loader específico para atividades do projeto
   const loadAtividadesDoEmpreendimento = async (empId) => {
     try {
@@ -58,20 +64,30 @@ const EmpreendimentoDetalhes = () => {
   useEffect(() => {
     async function fetchAuxiliares() {
       try {
-        const [usuariosList, docs, atvs, discs] = await Promise.all([
+        const [usuariosList, docs, atvsProjeto, atvsTodos, discs, planosDoc, execs, pavs] = await Promise.all([
           Usuario.list(),
           Documento.filter({ empreendimento_id: id }),
           Atividade.filter ? Atividade.filter({ empreendimento_id: id, somenteProjeto: 1 }) : Atividade.list({ empreendimento_id: id }),
-          Disciplina.list()
+          Atividade.list ? Atividade.list() : Atividade.filter ? Atividade.filter({}) : [],
+          Disciplina.list(),
+          PlanejamentoDocumento.filter ? PlanejamentoDocumento.filter({ empreendimento_id: id }) : [],
+          Execucao.list ? Execucao.list({ empreendimento_id: id }) : [],
+          Pavimento.list ? Pavimento.list(id) : []
         ]);
         setUsuarios(Array.isArray(usuariosList) ? usuariosList : []);
         setDocumentosState(Array.isArray(docs) ? docs : []);
         // Filtrar apenas atividades criadas pelo modal do projeto
-        const filtered = (Array.isArray(atvs) ? atvs : []).filter(a => (
+        const filtered = (Array.isArray(atvsProjeto) ? atvsProjeto : []).filter(a => (
           a?.empreendimento_id == id && a?.origem === 'projeto'
         ));
         setAtividadesState(filtered);
+        // Atividades do catálogo (globais)
+        const catalogo = (Array.isArray(atvsTodos) ? atvsTodos : []).filter(a => !a?.empreendimento_id);
+        setAtividadesCatalogo(catalogo);
         setDisciplinas(Array.isArray(discs) ? discs : []);
+        setPlanejamentos(Array.isArray(planosDoc) ? planosDoc : []);
+        setExecucoes(Array.isArray(execs) ? execs : []);
+        setPavimentos(Array.isArray(pavs) ? pavs : []);
       } catch (err) {
         // Não bloqueia tela
       }
@@ -127,6 +143,15 @@ const EmpreendimentoDetalhes = () => {
                 Catálogo
               </button>
               <button
+                onClick={() => setActiveTab('gestao')}
+                className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'gestao'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+              >
+                Gestão
+              </button>
+              <button
                 onClick={() => setActiveTab('etapas')}
                 className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'etapas'
                   ? 'border-blue-500 text-blue-600'
@@ -180,6 +205,18 @@ const EmpreendimentoDetalhes = () => {
           )}
           {activeTab === 'catalogo' && (
             <AnaliticoGlobalTab empreendimentoId={empreendimento?.id} onUpdate={() => { }} />
+          )}
+          {activeTab === 'gestao' && (
+            <GestaoTab
+              empreendimento={empreendimento}
+              documentos={documentosState}
+              planejamentos={planejamentos}
+              atividades={atividadesCatalogo}
+              usuarios={usuarios}
+              execucoes={execucoes}
+              pavimentos={pavimentos}
+              onUpdate={() => { }}
+            />
           )}
           {activeTab === 'etapas' && (
             <AnaliseEtapasTab planejamentos={empreendimento?.planejamentos || []} />

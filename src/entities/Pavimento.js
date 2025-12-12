@@ -1,11 +1,4 @@
-// Configuração da conexão
-const pool = new Pool({
-  user: 'Interativa', // Substitua pelo seu usuário do PostgreSQL
-  host: 'localhost', // Substitua pelo host do seu banco de dados
-  database: 'Interativa', // Substitua pelo nome do seu banco de dados
-  password: 'IntEng#@2025', // Substitua pela sua senha
-  port: 5433, // Porta padrão do PostgreSQL
-});
+// Cliente front-end: usa o backend via fetch; não conectar direto ao PostgreSQL aqui.
 
 export const Pavimento = {
   name: "Pavimento",
@@ -64,10 +57,13 @@ export const Pavimento = {
     }
   },
 
-  // Função para listar pavimentos
-  list: async function () {
+  // Função para listar pavimentos (opcionalmente por empreendimento)
+  list: async function (empreendimentoId = null) {
     try {
-      const response = await fetch('http://localhost:3001/api/pavimentos'); // Endpoint do backend
+      const url = empreendimentoId
+        ? `http://localhost:3001/api/pavimentos?empreendimento_id=${encodeURIComponent(empreendimentoId)}`
+        : 'http://localhost:3001/api/pavimentos';
+      const response = await fetch(url); // Endpoint do backend
       const data = await response.json();
       return data;
     } catch (error) {

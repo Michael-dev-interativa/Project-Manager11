@@ -11,13 +11,23 @@ const app = express();
 app.use(express.json());
 // Libera CORS para o frontend
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: [/^http:\/\/localhost:3000$/, /^http:\/\/localhost:3002$/, /^http:\/\/192\.168\.[0-9]+\.[0-9]+:3002$/],
   credentials: true
 }));
 // Middleware para responder OPTIONS automaticamente
 app.options('/api/planejamento-atividades/:id', (req, res) => {
   res.sendStatus(204);
 });
+
+// Função para garantir coluna valor_hora (executada após init do pool)
+async function ensureEmpreendimentoValorHoraColumn() {
+  try {
+    await pool.query('ALTER TABLE public."Empreendimento" ADD COLUMN IF NOT EXISTS valor_hora NUMERIC');
+    console.log('[DB] Coluna valor_hora em Empreendimento verificada/criada');
+  } catch (e) {
+    console.warn('[DB] Falha ao garantir coluna valor_hora em Empreendimento:', e.message);
+  }
+}
 
 // PUT: atualiza um PlanejamentoAtividade por ID
 app.put('/api/planejamento-atividades/:id', async (req, res) => {
@@ -207,6 +217,9 @@ const pool = new Pool({
   port: 5433,
 });
 
+// Após inicializar o pool, garantir coluna valor_hora
+ensureEmpreendimentoValorHoraColumn();
+
 // Log global de todas as requisições HTTP
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -214,7 +227,7 @@ app.use((req, res, next) => {
 });
 // Middlewares
 app.use(cors({
-  origin: 'http://localhost:3000', // ajuste conforme seu frontend
+  origin: [/^http:\/\/localhost:3000$/, /^http:\/\/localhost:3002$/, /^http:\/\/192\.168\.[0-9]+\.[0-9]+:3002$/],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -1466,6 +1479,38 @@ app.get('/api/Empreendimento', async (req, res) => {
       error: 'Erro ao buscar empreendimentos',
       details: error.message
     });
+  }
+});
+
+// Atualizar campos do Empreendimento (ex.: valor_hora)
+app.put('/api/Empreendimento/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const data = req.body || {};
+  console.log(`✅ PUT /api/Empreendimento/${id}`, data);
+  try {
+    const allowed = ['valor_hora', 'nome', 'endereco', 'cidade', 'uf', 'status', 'cliente', 'data_inicio', 'data_prevista'];
+    const setParts = [];
+    const values = [];
+    let idx = 1;
+    for (const field of allowed) {
+      if (data[field] !== undefined) {
+        setParts.push(`"${field}" = $${idx}`);
+        if (field === 'valor_hora') values.push(data[field] !== null ? parseFloat(data[field]) : null);
+        else values.push(data[field]);
+        idx++;
+      }
+    }
+    if (setParts.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo válido para atualizar' });
+    }
+    const sql = `UPDATE public."Empreendimento" SET ${setParts.join(', ')} WHERE id = $${idx} RETURNING *`;
+    values.push(id);
+    const r = await pool.query(sql, values);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Empreendimento não encontrado' });
+    res.json(r.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar Empreendimento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar Empreendimento', details: error.message });
   }
 });
 

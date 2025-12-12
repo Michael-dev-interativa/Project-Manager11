@@ -645,8 +645,8 @@ export default function AnaliticoGlobalTab({ empreendimentoId, onUpdate }) {
           <h2 className="text-2xl font-bold">Catálogo de Atividades do Empreendimento</h2>
           <p className="text-gray-500">Visualize todas as atividades planejadas e gerencie as atividades específicas do projeto.</p>
         </div>
-        <Button onClick={() => handleOpenModal()}>
-          <PlusCircle className="w-4 h-4 mr-2" />
+        <Button onClick={() => handleOpenModal()} className="bg-blue-600 text-white hover:bg-blue-700">
+          <PlusCircle className="w-4 h-4 mr-2 text-white" />
           Nova Atividade de Projeto
         </Button>
       </div>
