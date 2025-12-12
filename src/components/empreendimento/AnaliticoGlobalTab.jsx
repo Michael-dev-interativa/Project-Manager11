@@ -44,7 +44,7 @@ const EtapaEditModal = ({ isOpen, onClose, atividade, onSave }) => {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent>
         {atividade ? (
           <>
@@ -599,24 +599,28 @@ export default function AnaliticoGlobalTab({ empreendimentoId, onUpdate }) {
                           {isDeleting || isDeletingMultiple ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreHorizontal className="w-4 h-4" />}
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent>
+                      <DropdownMenuContent
+                        className="z-[60] bg-white border border-gray-200 shadow-xl rounded-md p-1"
+                        align="end"
+                        side="bottom"
+                      >
                         {ativ.isEditable ? (
                           <>
-                            <DropdownMenuItem onClick={() => handleOpenModal(ativ)}>
+                            <DropdownMenuItem className="focus:bg-gray-100" onClick={() => handleOpenModal(ativ)}>
                               <Edit className="w-4 h-4 mr-2" /> Editar Atividade
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(ativ.id)} className="text-red-600">
+                            <DropdownMenuItem className="text-red-600 focus:bg-red-50" onClick={() => handleDelete(ativ.id)}>
                               <Trash2 className="w-4 h-4 mr-2" /> Excluir Atividade de Projeto
                             </DropdownMenuItem>
                           </>
                         ) : (
                           <>
-                            <DropdownMenuItem onClick={() => handleOpenEtapaModal(ativ)}>
+                            <DropdownMenuItem className="focus:bg-gray-100" onClick={() => handleOpenEtapaModal(ativ)}>
                               <Layers className="w-4 h-4 mr-2 text-blue-600" /> Editar Etapa (Empreendimento)
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              className="text-red-600 focus:bg-red-50"
                               onClick={() => handleExcluirAtividade(ativ)}
-                              className="text-red-600"
                             >
                               <XCircle className="w-4 h-4 mr-2" /> Excluir do Catálogo (Empreendimento)
                             </DropdownMenuItem>
@@ -695,12 +699,14 @@ export default function AnaliticoGlobalTab({ empreendimentoId, onUpdate }) {
         />
       )}
 
-      <EtapaEditModal
-        isOpen={isEtapaModalOpen}
-        onClose={() => setIsEtapaModalOpen(false)}
-        atividade={selectedAtividade}
-        onSave={handleSaveEtapa}
-      />
+      {isEtapaModalOpen && selectedAtividade && (
+        <EtapaEditModal
+          isOpen={isEtapaModalOpen}
+          onClose={() => setIsEtapaModalOpen(false)}
+          atividade={selectedAtividade}
+          onSave={handleSaveEtapa}
+        />
+      )}
     </div>
   );
 }

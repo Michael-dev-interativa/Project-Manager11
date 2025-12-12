@@ -1736,31 +1736,64 @@ async function getColumnDataType(tableName, columnName) {
 app.get('/api/Atividades', async (req, res) => {
   try {
     const { empreendimento_id } = req.query;
+    // Flag opcional: quando true, retorna somente atividades "do projeto"
+    // isto é, criadas para o empreendimento e SEM vínculo em DocumentoAtividade
+    const somenteProjetoFlag = String(req.query.somenteProjeto || req.query.somente_projeto || '').toLowerCase();
+    const somenteProjeto = ['1', 'true', 'yes', 'y'].includes(somenteProjetoFlag);
+
     // Catálogo: só mostra atividades globais (empreendimento_id IS NULL ou 0) se NÃO houver filtro de empreendimento_id
-    let query = 'SELECT * FROM public."Atividade" WHERE ';
+    let query = 'SELECT a.* FROM public."Atividade" a WHERE ';
     const values = [];
     let paramCount = 1;
     let disciplinaFiltro = req.query.disciplina;
+    // Verifica se coluna 'origem' existe; se não, cria automaticamente
+    let hasOrigem = false;
+    try {
+      hasOrigem = await hasColumn('Atividade', 'origem');
+      if (!hasOrigem) {
+        try {
+          await pool.query('ALTER TABLE public."Atividade" ADD COLUMN IF NOT EXISTS origem TEXT');
+          await pool.query('CREATE INDEX IF NOT EXISTS idx_atividade_origem ON public."Atividade" (origem)');
+          hasOrigem = true;
+        } catch (e) {
+          console.warn('Não foi possível criar coluna origem automaticamente:', e.message);
+        }
+      }
+    } catch (e) {
+      hasOrigem = false;
+    }
+
     if (empreendimento_id) {
       // Filtro por empreendimento: só mostra as atividades daquele empreendimento
-      query += 'empreendimento_id = $1';
+      query += 'a.empreendimento_id = $1';
       values.push(parseInt(empreendimento_id));
+      if (somenteProjeto) {
+        // Atividades do Projeto
+        // Se existir coluna 'origem', exige origem='projeto'; caso contrário, recorre à heurística de id_atividade vazio
+        if (hasOrigem) {
+          query += ' AND a.origem = \"projeto\"';
+        } else {
+          query += ' AND (COALESCE(a.id_atividade, \'\') = \'\')';
+        }
+        // Sempre sem vínculo com documentos
+        query += ' AND NOT EXISTS (SELECT 1 FROM public."DocumentoAtividade" da WHERE da.atividade_id = a.id)';
+      }
       if (disciplinaFiltro) {
-        query += ` AND lower(trim(disciplina)) = lower(trim($${values.length + 1}))`;
+        query += ` AND lower(trim(a.disciplina)) = lower(trim($${values.length + 1}))`;
         values.push(disciplinaFiltro);
       }
     } else {
       // Catálogo: só atividades globais (nunca inclui atividades com empreendimento_id > 0 ou string '0')
-      query += '((empreendimento_id IS NULL) OR (CAST(empreendimento_id AS TEXT) = \'0\'))';
+      query += '((a.empreendimento_id IS NULL) OR (CAST(a.empreendimento_id AS TEXT) = \'0\'))';
       if (disciplinaFiltro) {
-        query += ` AND lower(trim(disciplina)) = lower(trim($${values.length + 1}))`;
+        query += ` AND lower(trim(a.disciplina)) = lower(trim($${values.length + 1}))`;
         values.push(disciplinaFiltro);
       }
     }
     // Impede qualquer atividade com empreendimento_id > 0 de aparecer no catálogo
     // Determine primary key to use for ordering
     const pk = await getPrimaryKeyColumn('Atividade');
-    query += ` ORDER BY "${pk}" DESC`;
+    query += ` ORDER BY a."${pk}" DESC`;
     let result;
     try {
       result = await pool.query(query, values);
@@ -1802,7 +1835,7 @@ app.post('/api/Atividades', async (req, res) => {
   try {
     const data = req.body;
     const {
-      id_atividade, etapa, disciplina, subdisciplina, atividade: descricao, predecessora, tempo, funcao, empreendimento_id
+      id_atividade, etapa, disciplina, subdisciplina, atividade: descricao, predecessora, tempo, funcao, empreendimento_id, origem
     } = data;
     const client = await pool.connect();
     try {
@@ -1815,7 +1848,8 @@ app.post('/api/Atividades', async (req, res) => {
         predecessora: predecessora || null,
         tempo: tempo ?? 0,
         funcao: funcao || '',
-        empreendimento_id: empreendimento_id ? parseInt(empreendimento_id) : null
+        empreendimento_id: empreendimento_id ? parseInt(empreendimento_id) : null,
+        origem: origem ?? null
       };
       const columns = [];
       const placeholders = [];
@@ -1845,76 +1879,70 @@ app.post('/api/Atividades', async (req, res) => {
 });
 
 app.put('/api/Atividades/:id', async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
   try {
-    const { id } = req.params;
-    const data = req.body;
-    const {
-      id_atividade, etapa, disciplina, subdisciplina, atividade: descricao, predecessora, tempo, funcao, empreendimento_id
-    } = data;
-    const client = await pool.connect();
-    try {
-      const fieldMap = {
-        id_atividade: id_atividade || null,
-        etapa: etapa || '',
-        disciplina: disciplina || '',
-        subdisciplina: subdisciplina || '',
-        atividade: descricao || '',
-        predecessora: predecessora || null,
-        tempo: tempo ?? 0,
-        funcao: funcao || '',
-        empreendimento_id: empreendimento_id ? parseInt(empreendimento_id) : null
-      };
-      const setParts = [];
-      const values = [];
-      let idx = 1;
-      for (const col of Object.keys(fieldMap)) {
-        if (await hasColumn('Atividade', col)) {
-          setParts.push(`"${col}" = $${idx}`);
-          values.push(fieldMap[col]);
-          idx++;
-        }
+    const body = req.body || {};
+    const fieldMap = {
+      etapa: body.etapa ?? '',
+      disciplina: body.disciplina ?? '',
+      subdisciplina: body.subdisciplina ?? '',
+      atividade: body.atividade ?? body.descricao ?? '',
+      predecessora: body.predecessora ?? null,
+      tempo: body.tempo ?? 0,
+      funcao: body.funcao ?? '',
+      empreendimento_id: body.empreendimento_id ? parseInt(body.empreendimento_id) : null,
+      origem: body.origem ?? null
+    };
+    const setParts = [];
+    const values = [];
+    let idx = 1;
+    for (const col of Object.keys(fieldMap)) {
+      if (await hasColumn('Atividade', col) && fieldMap[col] !== undefined) {
+        setParts.push(`"${col}" = $${idx}`);
+        values.push(fieldMap[col]);
+        idx++;
       }
-      if (setParts.length === 0) {
-        throw new Error('Nenhuma coluna válida encontrada na tabela Atividade para atualização');
-      }
-      const pk = await getPrimaryKeyColumn('Atividade');
-      const searchValue = (pk === 'id') ? parseInt(id) : id;
-      values.push(searchValue);
-      const sql = `UPDATE public."Atividade" SET ${setParts.join(', ')} WHERE "${pk}" = $${idx} RETURNING *`;
-      const result = await client.query(sql, values);
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Atividade não encontrada' });
-      res.json(result.rows[0]);
-    } catch (error) {
-      console.error('Erro ao atualizar atividade:', error);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-    } finally {
-      client.release();
     }
+    if (setParts.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma coluna válida para atualizar' });
+    }
+    const pk = await getPrimaryKeyColumn('Atividade');
+    const searchValue = (pk === 'id') ? parseInt(id) : id;
+    values.push(searchValue);
+    const sql = `UPDATE public."Atividade" SET ${setParts.join(', ')} WHERE "${pk}" = $${idx} RETURNING *`;
+    const result = await client.query(sql, values);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Atividade não encontrada' });
+    res.json(result.rows[0]);
   } catch (error) {
-    console.error('Erro ao atualizar atividade (outer):', error);
+    console.error('Erro ao atualizar atividade:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
   }
 });
 
 app.delete('/api/Atividades/:id', async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
   try {
-    const { id } = req.params;
-    const client = await pool.connect();
-    try {
-      const pk = await getPrimaryKeyColumn('Atividade');
-      const searchValue = (pk === 'id') ? parseInt(id) : id;
-      const result = await client.query(`DELETE FROM public."Atividade" WHERE "${pk}" = $1 RETURNING *`, [searchValue]);
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Atividade não encontrada' });
-      return res.json({ message: 'Atividade excluída com sucesso' });
-    } catch (error) {
-      console.error('Erro ao deletar atividade (inner):', error);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-    } finally {
-      client.release();
+    const pk = await getPrimaryKeyColumn('Atividade');
+    const searchValue = (pk === 'id') ? parseInt(id) : id;
+    await client.query('BEGIN');
+    const delLinks = await client.query('DELETE FROM public."DocumentoAtividade" WHERE atividade_id = $1::integer', [searchValue]);
+    const result = await client.query(`DELETE FROM public."Atividade" WHERE "${pk}" = $1 RETURNING *`, [searchValue]);
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Atividade não encontrada' });
     }
+    await client.query('COMMIT');
+    return res.json({ message: 'Atividade excluída com sucesso', linksRemovidos: delLinks.rowCount });
   } catch (error) {
-    console.error('Erro ao deletar atividade:', error);
+    console.error('Erro ao deletar atividade (inner):', error);
+    try { await client.query('ROLLBACK'); } catch { }
     res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
   }
 });
 

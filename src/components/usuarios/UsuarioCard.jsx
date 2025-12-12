@@ -24,7 +24,7 @@ export default function UsuarioCard({ usuario, onEdit, onDelete }) {
       whileHover={{ y: -5 }}
       transition={{ duration: 0.2 }}
     >
-      <Card className="bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden min-w-[340px] max-w-[380px] w-full flex flex-col justify-center min-h-[145px]">
+      <Card className="bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden w-full flex flex-col justify-center min-h-[140px]">
         <CardContent className="pt-3 pb-3 px-4 h-full flex flex-col justify-between">
           <div className="relative">
             {/* Badge status no topo direito */}

@@ -158,7 +158,7 @@ export default function Usuarios() {
               <p className="text-gray-600 mt-1">Gerencie os usuários do sistema</p>
             </div>
           </div>
-          <Button className="flex items-center gap-2 h-10 px-5" onClick={openCreateModal}>
+          <Button className="flex items-center gap-2 h-10 px-5 text-white" onClick={openCreateModal}>
             <Plus className="w-4 h-4" />
             Novo Usuário
           </Button>
@@ -218,7 +218,7 @@ export default function Usuarios() {
           </Select>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-0 gap-y-4 justify-items-start w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1 justify-items-stretch items-start w-full">
           {filteredUsuarios.length === 0 ? (
             <div className="col-span-full text-center py-8">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -228,16 +228,12 @@ export default function Usuarios() {
             </div>
           ) : (
             filteredUsuarios.map((usuario) => (
-              <div key={usuario.id}
-                className="flex m-0 p-0"
-                style={{ margin: 0, padding: 0 }}
-              >
-                <UsuarioCard
-                  usuario={usuario}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              </div>
+              <UsuarioCard
+                key={usuario.id}
+                usuario={usuario}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
             ))
           )}
         </div>

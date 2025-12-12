@@ -293,16 +293,13 @@ class EntityBase {
     // Garante que o campo 'cor' sempre seja enviado (mesmo se undefined)
     const payload = { ...data };
     if (!('cor' in payload)) payload.cor = null;
-    try {
-      console.log('[PlanejamentoAtividade.update] Chamando PUT', id, payload);
-      return await apiRequest(`/planejamento-atividades/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-    } catch (error) {
-      console.error('[PlanejamentoAtividade.update] Erro no PUT:', error);
-      throw error;
-    }
+    // Rota genérica correta: /<Entidade>/:id
+    // Ex.: Atividade -> /Atividades/:id, Usuario -> /Usuario/:id
+    console.log(`[${this.name}.update] PUT`, id, payload);
+    return await apiRequest(`/${this.name}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
   }
 
   async delete(id) {

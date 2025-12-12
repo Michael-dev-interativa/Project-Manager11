@@ -268,10 +268,15 @@ const Empreendimentos = () => {
         setAtividadesState([]);
         return;
       }
+      const params = { empreendimento_id: empId, somenteProjeto: 1 };
       const list = typeof Atividade.filter === 'function'
-        ? await Atividade.filter({ empreendimento_id: empId })
-        : await Atividade.list({ empreendimento_id: empId });
-      setAtividadesState(Array.isArray(list) ? list : []);
+        ? await Atividade.filter(params)
+        : await Atividade.list(params);
+      // Filtrar apenas atividades criadas pelo modal (origem==='projeto')
+      const filtered = (Array.isArray(list) ? list : []).filter(a => (
+        a?.empreendimento_id === empId && a?.origem === 'projeto'
+      ));
+      setAtividadesState(filtered);
       console.log(`📋 Atividades carregadas para empreendimento ${empId}:`, Array.isArray(list) ? list.length : 0);
     } catch (err) {
       console.warn('Erro ao carregar atividades do empreendimento:', err);
@@ -618,8 +623,14 @@ const Empreendimentos = () => {
                 <AtividadesProjetoTab
                   empreendimentoId={selectedEmpreendimento?.id}
                   onUpdate={(newActivity) => {
+                    if (newActivity && newActivity.__deleteId) {
+                      const deleteId = newActivity.__deleteId;
+                      setAtividadesState(prev => (Array.isArray(prev) ? prev.filter(a => (a.id ?? a.id_atividade) != deleteId) : prev));
+                      // Refetch leve para assegurar consistência
+                      loadAtividadesDoEmpreendimento(selectedEmpreendimento?.id);
+                      return;
+                    }
                     if (newActivity) {
-                      // Insert or update the activity into the current list quickly
                       setAtividadesState(prev => {
                         if (!Array.isArray(prev)) return [newActivity];
                         const pk = newActivity.id ?? newActivity.id_atividade;
@@ -631,6 +642,8 @@ const Empreendimentos = () => {
                         }
                         return [...prev, newActivity];
                       });
+                      // Após otimista, refetch para trazer dados do backend (ex.: origem, tipos)
+                      loadAtividadesDoEmpreendimento(selectedEmpreendimento?.id);
                     } else {
                       loadAtividadesDoEmpreendimento(selectedEmpreendimento?.id);
                     }

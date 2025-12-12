@@ -324,7 +324,7 @@ export default function AtividadesRapidasPage() {
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-gray-900 truncate">{toTitleCase(atividade.nome)}</h4>
                       </div>
-                      <Button onClick={() => handleOpenModal(atividade)} disabled={isLoading} size="sm" className="ml-3 bg-blue-600 hover:bg-blue-700">
+                      <Button onClick={() => handleOpenModal(atividade)} disabled={isLoading} size="sm" className="ml-3 bg-blue-600 hover:bg-blue-700 text-white">
                         <Play className="w-4 h-4 mr-1" />
                         Iniciar
                       </Button>

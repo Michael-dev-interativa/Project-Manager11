@@ -18,6 +18,25 @@ const EmpreendimentoDetalhes = () => {
   const [documentosState, setDocumentosState] = useState([]);
   const [atividadesState, setAtividadesState] = useState([]);
   const [disciplinas, setDisciplinas] = useState([]);
+  // Loader específico para atividades do projeto
+  const loadAtividadesDoEmpreendimento = async (empId) => {
+    try {
+      if (!empId) {
+        setAtividadesState([]);
+        return;
+      }
+      const params = { empreendimento_id: empId, somenteProjeto: 1 };
+      const list = typeof Atividade.filter === 'function'
+        ? await Atividade.filter(params)
+        : await Atividade.list(params);
+      const filtered = (Array.isArray(list) ? list : []).filter(a => (
+        a?.empreendimento_id == empId && a?.origem === 'projeto'
+      ));
+      setAtividadesState(filtered);
+    } catch (_) {
+      // mantem estado atual em caso de erro
+    }
+  };
 
   useEffect(() => {
     async function fetchEmpreendimento() {
@@ -42,12 +61,16 @@ const EmpreendimentoDetalhes = () => {
         const [usuariosList, docs, atvs, discs] = await Promise.all([
           Usuario.list(),
           Documento.filter({ empreendimento_id: id }),
-          Atividade.filter ? Atividade.filter({ empreendimento_id: id }) : Atividade.list({ empreendimento_id: id }),
+          Atividade.filter ? Atividade.filter({ empreendimento_id: id, somenteProjeto: 1 }) : Atividade.list({ empreendimento_id: id }),
           Disciplina.list()
         ]);
         setUsuarios(Array.isArray(usuariosList) ? usuariosList : []);
         setDocumentosState(Array.isArray(docs) ? docs : []);
-        setAtividadesState(Array.isArray(atvs) ? atvs : []);
+        // Filtrar apenas atividades criadas pelo modal do projeto
+        const filtered = (Array.isArray(atvs) ? atvs : []).filter(a => (
+          a?.empreendimento_id == id && a?.origem === 'projeto'
+        ));
+        setAtividadesState(filtered);
         setDisciplinas(Array.isArray(discs) ? discs : []);
       } catch (err) {
         // Não bloqueia tela
@@ -125,7 +148,30 @@ const EmpreendimentoDetalhes = () => {
           {activeTab === 'atividades' && (
             <AtividadesProjetoTab
               empreendimentoId={empreendimento?.id}
-              onUpdate={() => { }}
+              onUpdate={(newActivity) => {
+                if (newActivity && newActivity.__deleteId) {
+                  const deleteId = newActivity.__deleteId;
+                  setAtividadesState(prev => (Array.isArray(prev) ? prev.filter(a => (a.id ?? a.id_atividade) != deleteId) : prev));
+                  loadAtividadesDoEmpreendimento(empreendimento?.id);
+                  return;
+                }
+                if (newActivity) {
+                  setAtividadesState(prev => {
+                    if (!Array.isArray(prev)) return [newActivity];
+                    const pk = newActivity.id ?? newActivity.id_atividade;
+                    const index = prev.findIndex(a => (a.id ?? a.id_atividade) == pk);
+                    if (index >= 0) {
+                      const copy = [...prev];
+                      copy[index] = newActivity;
+                      return copy;
+                    }
+                    return [...prev, newActivity];
+                  });
+                  loadAtividadesDoEmpreendimento(empreendimento?.id);
+                } else {
+                  loadAtividadesDoEmpreendimento(empreendimento?.id);
+                }
+              }}
               documentos={documentosState}
               usuarios={usuarios}
               atividades={atividadesState}

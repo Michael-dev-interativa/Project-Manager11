@@ -9,6 +9,16 @@ import { Loader2 } from 'lucide-react';
 import { Atividade } from '@/entities/all';
 
 export default function AtividadeFormModal({ isOpen, onClose, empreendimentoId, disciplinas = [], atividade = null, onSuccess, showTrigger = false, triggerLabel = 'Nova Atividade', triggerClassName = '' }) {
+  // Lista padrão de etapas do projeto (pode ser evoluída para vir do backend)
+  const ETAPAS_PADRAO = [
+    'Planejamento',
+    'Concepcao',
+    'Estudo Preliminar',
+    'Anteprojeto',
+    'Projeto Basico',
+    'Projeto Executivo',
+    'As Built'
+  ];
   const [form, setForm] = useState({
     atividade: '',
     etapa: '',
@@ -98,7 +108,9 @@ export default function AtividadeFormModal({ isOpen, onClose, empreendimentoId, 
         predecessora: form.predecessora || '',
         tempo: form.tempo ? Number(form.tempo) : 0,
         funcao: form.funcao || '',
-        empreendimento_id: form.empreendimento_id || empreendimentoId
+        empreendimento_id: form.empreendimento_id || empreendimentoId,
+        // Marcador explícito para distinguir atividades criadas pelo modal do projeto
+        origem: 'projeto'
       };
       console.log('AtividadeFormModal - Sending to API', dataToSave);
       const atividadePkValue = atividade?.id ?? atividade?.id_atividade;
@@ -149,7 +161,9 @@ export default function AtividadeFormModal({ isOpen, onClose, empreendimentoId, 
                     <Select name="etapa" value={form.etapa} onValueChange={v => handleSelectChange('etapa', v)}>
                       <SelectTrigger id="etapa" aria-label="Etapa"><SelectValue placeholder="Selecione a etapa" /></SelectTrigger>
                       <SelectContent>
-                        {/* Option items should be populated */}
+                        {ETAPAS_PADRAO.map(et => (
+                          <SelectItem key={et} value={et}>{et}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

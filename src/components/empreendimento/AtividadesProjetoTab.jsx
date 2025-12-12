@@ -53,9 +53,19 @@ export default function AtividadesProjetoTab({ empreendimentoId, atividades = []
     if (window.confirm("Tem certeza que deseja excluir esta atividade específica do projeto?")) {
       try {
         await Atividade.delete(id);
-        onUpdate();
+        // Remoção otimista imediata
+        onUpdate && onUpdate({ __deleteId: id });
+        // Refetch leve via parent para sincronizar sem sair da aba
+        onUpdate && onUpdate();
       } catch (error) {
         console.error("Erro ao excluir atividade:", error);
+        const msg = String(error?.message || '').toLowerCase();
+        if (msg.includes('não encontrada') || msg.includes('not found') || msg.includes('404')) {
+          // Se já não existe no backend, removemos localmente e atualizamos
+          onUpdate && onUpdate({ __deleteId: id });
+          onUpdate && onUpdate();
+          return;
+        }
         alert("Erro ao excluir atividade");
       }
     }
@@ -87,13 +97,21 @@ export default function AtividadesProjetoTab({ empreendimentoId, atividades = []
   // because PlanejamentoAtividadeModal is now responsible for its own submission logic
   // via its internal state and `onSuccess` callback.
 
+  // Apenas atividades criadas especificamente para este projeto via modal "Nova Atividade" (origem === 'projeto')
   const filteredAtividades = useMemo(() => {
-    return (atividades || []).filter(a =>
-      (a.atividade || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (a.disciplina || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (a.etapa || '').toLowerCase().includes(searchTerm.toLowerCase())
+    const somenteDoModal = (a) => (
+      a?.empreendimento_id === empreendimentoId && a?.origem === 'projeto'
     );
-  }, [atividades, searchTerm]);
+
+    const base = (atividades || []).filter(somenteDoModal);
+    if (!searchTerm) return base;
+    const term = searchTerm.toLowerCase();
+    return base.filter(a =>
+      (a.atividade || '').toLowerCase().includes(term) ||
+      (a.disciplina || '').toLowerCase().includes(term) ||
+      (a.etapa || '').toLowerCase().includes(term)
+    );
+  }, [atividades, empreendimentoId, searchTerm]);
 
   if (!empreendimentoId) {
     return (
@@ -115,7 +133,9 @@ export default function AtividadesProjetoTab({ empreendimentoId, atividades = []
         disciplinas={disciplinas}
         atividade={editingAtividade}
         onSuccess={(savedActivity) => {
+          // Atualiza imediatamente e faz um refetch leve para sincronizar
           onUpdate && onUpdate(savedActivity);
+          setTimeout(() => { onUpdate && onUpdate(); }, 50);
           setShowForm(false);
           setEditingAtividade(null);
         }}
@@ -168,7 +188,10 @@ export default function AtividadesProjetoTab({ empreendimentoId, atividades = []
             triggerClassName="inline-flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors shadow"
             empreendimentoId={empreendimentoId}
             disciplinas={disciplinas}
-            onSuccess={(savedActivity) => { onUpdate && onUpdate(savedActivity); }}
+            onSuccess={(savedActivity) => {
+              onUpdate && onUpdate(savedActivity);
+              setTimeout(() => { onUpdate && onUpdate(); }, 50);
+            }}
           />
         </div>
       </div>
