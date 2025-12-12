@@ -224,24 +224,38 @@ export default function AtividadesRapidasPage() {
   }
 
   const getStatusBadge = (status) => {
-    const badges = {
-      Finalizado: (
-        <Badge className="bg-green-100 text-green-800">
-          <CheckCircle2 className="w-3 h-3 mr-1" />Finalizado
-        </Badge>
-      ),
-      "Em andamento": (
-        <Badge className="bg-blue-100 text-blue-800">
+    const s = String(status || '').toLowerCase()
+    if (s.includes('andamento') || s === 'em_andamento' || s === 'em_execucao') {
+      return (
+        <Badge className="bg-blue-100 text-blue-700 border border-blue-200">
           <Play className="w-3 h-3 mr-1" />Em andamento
         </Badge>
-      ),
-      Paralisado: (
-        <Badge className="bg-yellow-100 text-yellow-800">
+      )
+    }
+    if (s.includes('final') || s === 'concluido' || s === 'concluído') {
+      return (
+        <Badge className="bg-green-100 text-green-800 border border-green-200">
+          <CheckCircle2 className="w-3 h-3 mr-1" />Concluído
+        </Badge>
+      )
+    }
+    if (s.includes('paus') || s.includes('paral') || s === 'pausado' || s === 'paralisado') {
+      return (
+        <Badge className="bg-rose-100 text-rose-700 border border-rose-200">
           <XCircle className="w-3 h-3 mr-1" />Pausado
         </Badge>
-      ),
+      )
     }
-    return badges[status] || <Badge variant="outline">{status}</Badge>
+    return <Badge className="bg-gray-100 text-gray-700 border border-gray-200">{status || '—'}</Badge>
+  }
+
+  const toTitleCase = (str) => {
+    if (!str) return ''
+    return String(str)
+      .toLowerCase()
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
   }
 
   const formatTempo = (tempo) => {
@@ -308,7 +322,7 @@ export default function AtividadesRapidasPage() {
                       className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
                     >
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-gray-900 truncate">{atividade.nome}</h4>
+                        <h4 className="font-medium text-gray-900 truncate">{toTitleCase(atividade.nome)}</h4>
                       </div>
                       <Button onClick={() => handleOpenModal(atividade)} disabled={isLoading} size="sm" className="ml-3 bg-blue-600 hover:bg-blue-700">
                         <Play className="w-4 h-4 mr-1" />
@@ -341,7 +355,7 @@ export default function AtividadesRapidasPage() {
                     {execucoes.map((exec, idx) => (
                       <div key={exec.id ?? `${exec.inicio}-${idx}`} className="p-4 bg-white rounded-lg border border-gray-200 hover:shadow-md transition-all">
                         <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-medium text-gray-900 flex-1 mr-2">{exec.descritivo || exec.atividade_nome || exec.documento_nome || exec.descricao || "Atividade"}</h4>
+                          <h4 className="font-medium text-gray-900 flex-1 mr-2">{toTitleCase(exec.descritivo || exec.atividade_nome || exec.documento_nome || exec.descricao || "Atividade")}</h4>
                           {getStatusBadge(exec.status)}
                         </div>
                         {exec.usuario_ajudado && (

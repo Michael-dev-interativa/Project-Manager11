@@ -55,7 +55,7 @@ export default function ExecucoesPorUsuario() {
 
                 acc[groupKey].tempoTotalAgregado += exec.tempo_total || 0;
                 acc[groupKey].execucoes.push(exec);
-                
+
                 if (!acc[groupKey].ultimaExecucao || new Date(exec.inicio) > new Date(acc[groupKey].ultimaExecucao.inicio)) {
                     acc[groupKey].ultimaExecucao = exec;
                     acc[groupKey].status = exec.status;
@@ -64,14 +64,14 @@ export default function ExecucoesPorUsuario() {
                 return acc;
             }, {});
 
-            finalGrouped[usuarioEmail] = Object.values(groupedByPlan).sort((a,b) => 
+            finalGrouped[usuarioEmail] = Object.values(groupedByPlan).sort((a, b) =>
                 new Date(b.ultimaExecucao.inicio) - new Date(a.ultimaExecucao.inicio)
             );
         }
 
         setExecucoesPorUsuario(finalGrouped);
-        
-        const uMap = usuarios.reduce((acc, u) => ({...acc, [u.email]: u.nome}), {});
+
+        const uMap = usuarios.reduce((acc, u) => ({ ...acc, [u.email]: u.nome }), {});
         setUsuariosMap(uMap);
 
     }, []);
@@ -86,7 +86,7 @@ export default function ExecucoesPorUsuario() {
             const fimDoDia = `${dateStr}T23:59:59`;
 
             let filters = { inicio: { $gte: inicioDoDia, $lte: fimDoDia } };
-            
+
             if (!isAdmin) {
                 filters.usuario = user.email;
             }
@@ -95,7 +95,7 @@ export default function ExecucoesPorUsuario() {
                 retryWithBackoff(() => Execucao.filter(filters)),
                 !isAdmin ? Promise.resolve([user]) : retryWithBackoff(() => Usuario.list())
             ]);
-            
+
             processarDados(execsDoDia || [], allUsers || []);
 
         } catch (error) {
@@ -113,25 +113,30 @@ export default function ExecucoesPorUsuario() {
 
     const totaisPorUsuario = useMemo(() => {
         const totais = {};
-        
+
         Object.entries(execucoesPorUsuario).forEach(([usuarioEmail, userExecutionsGroups]) => {
             const totalHoras = userExecutionsGroups.reduce((sum, group) => {
                 return sum + (group.tempoTotalAgregado || 0);
             }, 0);
-            
+
             totais[usuarioEmail] = totalHoras;
         });
-        
+
         return totais;
     }, [execucoesPorUsuario]);
 
-    const getStatusColor = (status) => {
-        const colors = {
-            "Em andamento": "bg-yellow-100 text-yellow-800",
-            "Finalizado": "bg-green-100 text-green-800",
-            "Paralisado": "bg-red-100 text-red-800"
-        };
-        return colors[status] || "bg-gray-100 text-gray-800";
+    const normalizeStatus = (raw) => {
+        const s = (raw || '').toString().toLowerCase();
+        if (s === 'em_andamento' || s === 'em execucao' || s === 'em_execucao') {
+            return { label: 'Em andamento', classes: 'bg-blue-100 text-blue-700' };
+        }
+        if (s === 'finalizado' || s.includes('conclu')) {
+            return { label: 'Concluído', classes: 'bg-green-100 text-green-800' };
+        }
+        if (s === 'pausado' || s === 'paralisado') {
+            return { label: 'Pausado', classes: 'bg-rose-100 text-rose-700 border border-rose-200' };
+        }
+        return { label: raw || '—', classes: 'bg-gray-100 text-gray-800 border border-gray-200' };
     };
 
     const formatTempo = (tempo) => {
@@ -169,8 +174,8 @@ export default function ExecucoesPorUsuario() {
                     <div className="flex items-center gap-2">
                         <CalendarIcon className="w-5 h-5 text-blue-600" />
                         <CardTitle className="text-xl font-bold text-gray-900">
-                            {isToday(selectedDate) || !isAdmin ? 
-                                (isAdmin ? "Atividades de Hoje" : "Minhas Atividades de Hoje") : 
+                            {isToday(selectedDate) || !isAdmin ?
+                                (isAdmin ? "Atividades de Hoje" : "Minhas Atividades de Hoje") :
                                 `Atividades de ${format(selectedDate, 'dd/MM/yyyy', { locale: ptBR })}`
                             }
                         </CardTitle>
@@ -184,7 +189,7 @@ export default function ExecucoesPorUsuario() {
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0">
-                                <Calendar mode="single" selected={selectedDate} onSelect={(date) => setSelectedDate(date || new Date())} initialFocus locale={ptBR} disabled={(date) => date > new Date() || date < new Date("2020-01-01")}/>
+                                <Calendar mode="single" selected={selectedDate} onSelect={(date) => setSelectedDate(date || new Date())} initialFocus locale={ptBR} disabled={(date) => date > new Date() || date < new Date("2020-01-01")} />
                             </PopoverContent>
                         </Popover>
                     )}
@@ -196,13 +201,13 @@ export default function ExecucoesPorUsuario() {
                         <p className="text-blue-700 text-sm">ℹ️ Você está visualizando apenas as suas atividades de hoje.</p>
                     </div>
                 )}
-                
+
                 <div className="space-y-6">
                     {Object.keys(execucoesPorUsuario).length > 0 ? (
                         Object.entries(execucoesPorUsuario).map(([usuarioEmail, userExecutionsGroups]) => {
                             const nomeUsuario = usuariosMap[usuarioEmail] || usuarioEmail;
                             const totalUsuario = totaisPorUsuario[usuarioEmail] || 0;
-                            
+
                             return (
                                 <div key={usuarioEmail} className="border rounded-lg p-4 bg-gray-50/70">
                                     {isAdmin && (
@@ -216,7 +221,7 @@ export default function ExecucoesPorUsuario() {
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     <div className="space-y-2">
                                         {userExecutionsGroups.map((group) => (
                                             <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded border text-sm shadow-sm">
@@ -225,10 +230,14 @@ export default function ExecucoesPorUsuario() {
                                                     {group.usuario_ajudado && <p className="text-purple-600 text-xs mt-1">Ajudando: {usuariosMap[group.usuario_ajudado] || group.usuario_ajudado}</p>}
                                                 </div>
                                                 <div className="flex items-center gap-3 ml-2">
-                                                    <Badge className={getStatusColor(group.status)}>{group.status}</Badge>
+                                                    {(() => {
+                                                        const st = normalizeStatus(group.status); return (
+                                                            <Badge className={st.classes}>{st.label}</Badge>
+                                                        );
+                                                    })()}
                                                     <div className="text-right w-20">
                                                         <div className="text-xs text-gray-500">
-                                                            {group.status === 'Em andamento' ? `${formatData(group.ultimaExecucao.inicio)} - ...` : ''}
+                                                            {normalizeStatus(group.status).label === 'Em andamento' ? `${formatData(group.ultimaExecucao.inicio)} - ...` : ''}
                                                         </div>
                                                         <div className="text-sm font-bold text-blue-600">{formatTempo(group.tempoTotalAgregado)}</div>
                                                     </div>
@@ -236,7 +245,7 @@ export default function ExecucoesPorUsuario() {
                                             </div>
                                         ))}
                                     </div>
-                                    
+
                                     {!isAdmin && (
                                         <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
                                             <span className="text-sm font-medium text-gray-700">Total do dia:</span>

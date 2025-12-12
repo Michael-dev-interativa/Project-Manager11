@@ -20,11 +20,21 @@ function formatDateLong(date) {
 }
 
 function statusPill(status) {
-  const s = (status || '').toLowerCase();
-  if (s === 'concluido' || s === 'finalizado') return { text: 'Finalizado', cls: 'bg-green-100 text-green-700' };
-  if (s === 'paralisado' || s === 'pausado') return { text: 'Pausado', cls: 'bg-amber-100 text-amber-700' };
-  if (s === 'em_andamento' || s === 'em_execucao') return { text: 'Em andamento', cls: 'bg-blue-100 text-blue-700' };
-  return { text: status || '—', cls: 'bg-gray-100 text-gray-700' };
+  const raw = (status ?? '').toString();
+  const s = raw.trim().toLowerCase();
+  if (s === 'concluido' || s.includes('final')) return { text: 'Concluído', cls: 'bg-green-100 text-green-800 border border-green-200' };
+  if (s === 'paralisado' || s === 'pausado' || s.includes('paus')) return { text: 'Pausado', cls: 'bg-rose-100 text-rose-700 border border-rose-200' };
+  if (s === 'em_andamento' || s === 'em_execucao' || s.includes('andamento')) return { text: 'Em andamento', cls: 'bg-blue-100 text-blue-700 border border-blue-200' };
+  return { text: raw || '—', cls: 'bg-gray-100 text-gray-700 border border-gray-200' };
+}
+
+function toTitleCase(str) {
+  if (!str) return '';
+  return String(str)
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 export default function AtividadesHojeTable() {
@@ -123,7 +133,7 @@ export default function AtividadesHojeTable() {
                 {arr.map((it) => {
                   const seg = toSeconds(it.tempo_total, it.tempo_executado);
                   const s = statusPill(it.status);
-                  const titulo = it.atividade_nome || it.documento_nome || it.descricao || 'Atividade';
+                  const titulo = toTitleCase(it.atividade_nome || it.documento_nome || it.descricao || 'Atividade');
                   const ajudando = it.usuario_ajudado ? String(it.usuario_ajudado).trim() : '';
                   const rawObs = it.observacao ?? it.observacoes ?? it.observacao_texto ?? it.observacao_execucao ?? it.observacao_finalizacao ?? it.comentario ?? it.comentarios ?? it.descricao_observacao ?? null;
                   const obs = rawObs != null ? String(rawObs).trim() : '';
