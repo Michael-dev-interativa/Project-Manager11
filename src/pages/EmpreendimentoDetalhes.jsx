@@ -7,6 +7,7 @@ import AtividadesProjetoTab from "../components/empreendimento/AtividadesProjeto
 import AnaliticoGlobalTab from "../components/empreendimento/AnaliticoGlobalTab";
 import AnaliseEtapasTab from "../components/empreendimento/AnaliseEtapasTab";
 import GestaoTab from "../components/empreendimento/GestaoTab";
+import DocumentacaoTab from "../components/empreendimento/DocumentacaoTab";
 import { Empreendimento, Usuario, Documento, Atividade, Disciplina, PlanejamentoAtividade, PlanejamentoDocumento, Execucao } from "../entities/all";
 import { Pavimento } from "../entities/Pavimento";
 
@@ -76,11 +77,8 @@ const EmpreendimentoDetalhes = () => {
         ]);
         setUsuarios(Array.isArray(usuariosList) ? usuariosList : []);
         setDocumentosState(Array.isArray(docs) ? docs : []);
-        // Filtrar apenas atividades criadas pelo modal do projeto
-        const filtered = (Array.isArray(atvsProjeto) ? atvsProjeto : []).filter(a => (
-          a?.empreendimento_id == id && a?.origem === 'projeto'
-        ));
-        setAtividadesState(filtered);
+        // Para a aba Documentação, queremos todas as atividades do banco
+        setAtividadesState(Array.isArray(atvsTodos) ? atvsTodos : []);
         // Atividades do catálogo (globais)
         const catalogo = (Array.isArray(atvsTodos) ? atvsTodos : []).filter(a => !a?.empreendimento_id);
         setAtividadesCatalogo(catalogo);
@@ -143,6 +141,15 @@ const EmpreendimentoDetalhes = () => {
                 Catálogo
               </button>
               <button
+                onClick={() => setActiveTab('documentacao')}
+                className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'documentacao'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+              >
+                Documentação
+              </button>
+              <button
                 onClick={() => setActiveTab('gestao')}
                 className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'gestao'
                   ? 'border-blue-500 text-blue-600'
@@ -169,6 +176,18 @@ const EmpreendimentoDetalhes = () => {
           )}
           {activeTab === 'pavimentos' && (
             <PavimentosTab empreendimentoId={empreendimento?.id} onUpdate={() => { }} />
+          )}
+          {activeTab === 'documentacao' && (
+            <DocumentacaoTab
+              empreendimento={empreendimento}
+              documentos={documentosState}
+              disciplinas={disciplinas}
+              atividades={atividadesState}
+              planejamentos={planejamentos}
+              usuarios={usuarios}
+              pavimentos={pavimentos}
+              onUpdate={() => { }}
+            />
           )}
           {activeTab === 'atividades' && (
             <AtividadesProjetoTab

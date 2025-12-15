@@ -3,17 +3,17 @@ import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Settings, RefreshCw, CalendarDays } from "lucide-react";
+import { Calendar, Clock, Settings, RefreshCw, CalendarDays, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActivityTimerContext } from "@/components/contexts/ActivityTimerContext";
 import { Empreendimento, Documento, Usuario, Atividade, PlanejamentoAtividade, PlanejamentoDocumento, Disciplina } from "@/entities/all";
-
 import PlanejamentoTab from "../components/planejamento/PlanejamentoTab";
 import SobrasTab from "../components/planejamento/SobrasTab";
 import ConfiguracaoTab from "../components/planejamento/ConfiguracaoTab";
 import NovoPlanejamentoModal from '../components/planejamento/NovoPlanejamentoModal';
+import AlocacaoEquipeTab from '../components/planejamento/AlocacaoEquipeTab';
 
 export default function Planejamento() {
   const [searchParams] = useSearchParams();
@@ -134,37 +134,23 @@ export default function Planejamento() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 max-w-2xl">
+            <TabsList className="grid w-full grid-cols-2 max-w-xl">
               <TabsTrigger value="planejamento" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
-                Planejamento
+                Curva S
               </TabsTrigger>
-              <TabsTrigger value="sobras" className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Sobras
-              </TabsTrigger>
-              <TabsTrigger value="configuracoes" className="flex items-center gap-2">
-                <Settings className="w-4 h-4" />
-                Configurações
+              <TabsTrigger value="alocacao" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Alocação Equipe
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="planejamento">
-              <PlanejamentoTab
-                empreendimentoId={empreendimento.id}
-              />
+              <PlanejamentoTab empreendimentoId={empreendimento.id} />
             </TabsContent>
 
-            <TabsContent value="sobras">
-              <SobrasTab
-                empreendimentoId={empreendimento.id}
-              />
-            </TabsContent>
-
-            <TabsContent value="configuracoes">
-              <ConfiguracaoTab
-                empreendimentoId={empreendimento.id}
-              />
+            <TabsContent value="alocacao">
+              <AlocacaoEquipeTab empreendimentoId={empreendimento.id} />
             </TabsContent>
           </Tabs>
         </div>

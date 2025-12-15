@@ -425,9 +425,11 @@ export default function PlanejamentoDocumentacaoModal({
               </div>
               {/* Lista de etapas para seleção */}
               <div>
-                <Label>Selecione as Etapas:</Label>
-                <span className="float-right text-xs text-gray-500">{atividadesAgrupadas.length} etapas disponíveis</span>
-                <div className="space-y-2 max-h-60 overflow-y-auto border rounded p-2 bg-gray-50 mt-2">
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Selecione as Etapas:</Label>
+                  <span className="text-xs text-gray-500">{atividadesAgrupadas.length} etapas disponíveis</span>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto border rounded p-4 bg-gray-50">
                   {atividadesAgrupadas.map(({ etapa, atividades }) => (
                     <div key={etapa} className="mb-2">
                       <div className="flex items-center gap-2 mb-1">
