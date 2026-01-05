@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -2670,5 +2671,110 @@ app.post('/api/Execucao', async (req, res) => {
   } catch (error) {
     console.error('Erro ao criar execução:', error);
     res.status(500).json({ error: 'Erro ao criar execução', details: error.message });
+  }
+});
+
+// ==========================
+// ATA DE REUNIÃO (ata_reuniao)
+// ==========================
+
+// GET: listar todas as atas de reunião
+app.get('/api/ata-reuniao', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM ata_reuniao ORDER BY created_date DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar atas de reunião:', error);
+    res.status(500).json({ error: 'Erro ao buscar atas de reunião', details: error.message });
+  }
+});
+
+// GET: obter uma ata de reunião por ID
+app.get('/api/ata-reuniao/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('SELECT * FROM ata_reuniao WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'ATA não encontrada' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar ata de reunião:', error);
+    res.status(500).json({ error: 'Erro ao buscar ata de reunião', details: error.message });
+  }
+});
+
+// POST: criar nova ata de reunião
+app.post('/api/ata-reuniao', async (req, res) => {
+  try {
+    const data = req.body;
+    const result = await pool.query(
+      `INSERT INTO ata_reuniao (assunto, local, data, horario, participantes, folha, rev, controle, emissao, status, providencias, created_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING *`,
+      [
+        data.assunto,
+        data.local,
+        data.data,
+        data.horario,
+        JSON.stringify(data.participantes || []),
+        data.folha,
+        data.rev,
+        data.controle,
+        data.emissao,
+        data.status,
+        JSON.stringify(data.providencias || [])
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar ata de reunião:', error);
+    res.status(500).json({ error: 'Erro ao criar ata de reunião', details: error.message });
+  }
+});
+
+// PUT: atualizar ata de reunião por ID
+app.put('/api/ata-reuniao/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    const result = await pool.query(
+      `UPDATE ata_reuniao SET assunto=$1, local=$2, data=$3, horario=$4, participantes=$5, folha=$6, rev=$7, controle=$8, emissao=$9, status=$10, providencias=$11 WHERE id=$12 RETURNING *`,
+      [
+        data.assunto,
+        data.local,
+        data.data,
+        data.horario,
+        JSON.stringify(data.participantes || []),
+        data.folha,
+        data.rev,
+        data.controle,
+        data.emissao,
+        data.status,
+        JSON.stringify(data.providencias || []),
+        id
+      ]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'ATA não encontrada' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar ata de reunião:', error);
+    res.status(500).json({ error: 'Erro ao atualizar ata de reunião', details: error.message });
+  }
+});
+
+// DELETE: remover ata de reunião por ID
+app.delete('/api/ata-reuniao/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM ata_reuniao WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'ATA não encontrada' });
+    }
+    res.json({ message: 'ATA excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir ata de reunião:', error);
+    res.status(500).json({ error: 'Erro ao excluir ata de reunião', details: error.message });
   }
 });

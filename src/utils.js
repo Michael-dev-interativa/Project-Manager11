@@ -6,9 +6,10 @@ export const createPageUrl = (pageName) => {
     'Relatorios': '/relatorios',
     'AnaliseConcepcaoPlanejamento': '/analise-concepcao-planejamento',
     'SeletorPlanejamento': '/seletor-planejamento',
-    'Planejamento': '/planejamento'
+    'Planejamento': '/planejamento',
+    'AtaPlanejamento': '/ata-planejamento'
   };
-  
+
   return routes[pageName] || '/';
 };
 

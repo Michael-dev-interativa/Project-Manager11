@@ -9,6 +9,7 @@ import AnaliseEtapasTab from "../components/empreendimento/AnaliseEtapasTab";
 import GestaoTab from "../components/empreendimento/GestaoTab";
 import DocumentacaoTab from "../components/empreendimento/DocumentacaoTab";
 import { Empreendimento, Usuario, Documento, Atividade, Disciplina, PlanejamentoAtividade, PlanejamentoDocumento, Execucao } from "../entities/all";
+import CadastroTab from "./Planejamento";
 import { Pavimento } from "../entities/Pavimento";
 
 const EmpreendimentoDetalhes = () => {
@@ -114,6 +115,15 @@ const EmpreendimentoDetalhes = () => {
                 Documentos
               </button>
               <button
+                onClick={() => setActiveTab('cadastro')}
+                className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'cadastro'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+              >
+                Cadastro
+              </button>
+              <button
                 onClick={() => setActiveTab('pavimentos')}
                 className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'pavimentos'
                   ? 'border-blue-500 text-blue-600'
@@ -173,6 +183,9 @@ const EmpreendimentoDetalhes = () => {
         <div className="p-4">
           {activeTab === 'documentos' && (
             <DocumentosTab empreendimento={empreendimento} isActive={activeTab === 'documentos'} />
+          )}
+          {activeTab === 'cadastro' && (
+            <CadastroTab empreendimento={empreendimento} />
           )}
           {activeTab === 'pavimentos' && (
             <PavimentosTab empreendimentoId={empreendimento?.id} onUpdate={() => { }} />

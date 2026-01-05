@@ -9,6 +9,7 @@ import {
   BarChart3,
   Activity,
   Settings,
+  FileText,
   X
 } from 'lucide-react';
 import { createPageUrl } from '../../utils';
@@ -17,6 +18,7 @@ const navigation = [
   { name: 'Início', href: '/', icon: LayoutDashboard },
   { name: 'Empreendimentos', href: createPageUrl('Empreendimentos'), icon: Building2 },
   { name: 'Planejamento', href: createPageUrl('SeletorPlanejamento'), icon: CalendarDays },
+  { name: 'Ata de Planejamento', href: createPageUrl('AtaPlanejamento'), icon: FileText },
   { name: 'Relatórios', href: createPageUrl('Relatorios'), icon: BarChart3 },
   { name: 'Atividades Rápidas', href: '/atividades-rapidas', icon: Activity },
   { name: 'Usuários', href: createPageUrl('Usuarios'), icon: Users },

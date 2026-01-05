@@ -1,3 +1,42 @@
+// ✅ ENTIDADE ATA DE REUNIÃO (CRUD)
+class AtaReuniaoEntity {
+  constructor(endpoint) {
+    this.endpoint = endpoint;
+  }
+
+  async list(order = '') {
+    let url = `/${this.endpoint}`;
+    if (order) url += `?order=${order}`;
+    try {
+      return await apiRequest(url);
+    } catch (error) {
+      logger.mockData('Usando dados mock para atas de reunião');
+      return [];
+    }
+  }
+
+  async create(data) {
+    return await apiRequest(`/${this.endpoint}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async update(id, data) {
+    return await apiRequest(`/${this.endpoint}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async delete(id) {
+    return await apiRequest(`/${this.endpoint}/${id}`, {
+      method: 'DELETE'
+    });
+  }
+}
+
+export const AtaReuniao = new AtaReuniaoEntity('ata-reuniao');
 // ✅ LOGGER SIMPLES (sem arquivo externo)
 const logger = {
   mockData: (message) => {

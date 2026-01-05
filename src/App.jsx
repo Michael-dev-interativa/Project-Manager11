@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import CurvaS from './pages/CurvaS.jsx';
+import AtaPlanejamento from './pages/AtaPlanejamento.jsx';
 import { ActivityTimerProvider } from './components/contexts/ActivityTimerContext';
 import { UserProvider } from './components/contexts/UserContext';
 import { ExecucaoProvider } from './components/contexts/ExecucaoContext';
@@ -85,6 +86,9 @@ function App() {
                         } />
                         <Route path="/configuracoes" element={
                           <ProtectedRoute><Configuracoes /></ProtectedRoute>
+                        } />
+                        <Route path="/ata-planejamento" element={
+                          <ProtectedRoute><AtaPlanejamento /></ProtectedRoute>
                         } />
                       </Routes>
                       <GlobalExecucaoModal />
