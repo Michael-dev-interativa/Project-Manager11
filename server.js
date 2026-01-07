@@ -18,6 +18,20 @@ const PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || 
 const FRONTEND_URL = process.env.FRONTEND_URL || (PUBLIC_URL ? PUBLIC_URL : 'http://localhost:3000');
 const SERVER_URL = process.env.SERVER_URL || (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.PORT || 3001}`);
 
+// Logs de diagnóstico das variáveis de ambiente (não loga segredo completo)
+try {
+  const secretMasked = process.env.GOOGLE_CLIENT_SECRET
+    ? `***${String(process.env.GOOGLE_CLIENT_SECRET).slice(-6)}`
+    : 'undefined';
+  console.log('[ENV] NODE_ENV:', process.env.NODE_ENV);
+  console.log('[ENV] PORT:', process.env.PORT);
+  console.log('[ENV] RENDER_EXTERNAL_URL:', process.env.RENDER_EXTERNAL_URL);
+  console.log('[ENV] SERVER_URL:', SERVER_URL);
+  console.log('[ENV] FRONTEND_URL:', FRONTEND_URL);
+  console.log('[ENV] GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID || 'undefined');
+  console.log('[ENV] GOOGLE_CLIENT_SECRET (masked):', secretMasked);
+} catch (_) { }
+
 app.use(cors({
   origin: (origin, callback) => {
     // Permitir chamadas sem origin (como curl/serverside)
