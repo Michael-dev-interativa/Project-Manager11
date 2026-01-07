@@ -1,10 +1,13 @@
 
 import React from "react";
+import { useNavigate } from 'react-router-dom';
+import { Users } from 'lucide-react';
 import CalendarioPlanejamento from "../components/dashboard/CalendarioPlanejamento";
 import AtividadesHojeTable from "@/components/planejamento/AtividadesHojeTable";
 import AcessoRapido from "@/components/planejamento/AcessoRapido";
 
 export default function DashboardPage(props) {
+  const navigate = useNavigate();
   return (
     <div className="p-4 space-y-6">
       <CalendarioPlanejamento {...props} />

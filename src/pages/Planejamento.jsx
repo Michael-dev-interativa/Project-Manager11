@@ -1,167 +1,130 @@
-import React, { useState, useEffect, useContext, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Card } from "@/components/ui/card";
+import { useState, useEffect, useCallback } from 'react';
+import { useLocation, Link } from 'react-router-dom';
+import { Empreendimento } from '@/entities/all';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Settings, RefreshCw, CalendarDays, Users } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ActivityTimerContext } from "@/components/contexts/ActivityTimerContext";
-import { Empreendimento, Documento, Usuario, Atividade, PlanejamentoAtividade, PlanejamentoDocumento, Disciplina } from "@/entities/all";
-import PlanejamentoTab from "../components/planejamento/PlanejamentoTab";
-import SobrasTab from "../components/planejamento/SobrasTab";
-import ConfiguracaoTab from "../components/planejamento/ConfiguracaoTab";
-import NovoPlanejamentoModal from '../components/planejamento/NovoPlanejamentoModal';
-import AlocacaoEquipeTab from '../components/planejamento/AlocacaoEquipeTab';
+import { ArrowLeft, Calendar, BarChart3, Settings, AlertCircle } from 'lucide-react';
+import { createPageUrl } from '@/utils';
+import PlanejamentoTab from '../components/planejamento/PlanejamentoTab';
+import SobrasTab from '../components/planejamento/SobrasTab';
+import ConfiguracaoTab from '../components/planejamento/ConfiguracaoTab';
+import EmpreendimentoHeader from '../components/empreendimento/EmpreendimentoHeader';
 
-export default function Planejamento() {
-  const [searchParams] = useSearchParams();
-  const empreendimentoId = searchParams.get("id");
-
+export default function PlanejamentoPage() {
+  const location = useLocation();
   const [empreendimento, setEmpreendimento] = useState(null);
-  const [empreendimentos, setEmpreendimentos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("planejamento");
-  const [showModal, setShowModal] = useState(false);
-  const { refreshTrigger } = useContext(ActivityTimerContext);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('planejamento');
+
+  const empreendimentoId = new URLSearchParams(location.search).get("id");
 
   const loadEmpreendimento = useCallback(async () => {
+    if (!empreendimentoId) {
+      setError("ID do empreendimento não fornecido.");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const allEmps = await Empreendimento.list();
-      setEmpreendimentos(allEmps);
-      const empData = allEmps.find(e => e.id === empreendimentoId);
-      setEmpreendimento(empData || null);
-    } catch (error) {
-      console.error("Erro ao carregar dados do empreendimento:", error);
-      let errorMessage = "Falha ao carregar os dados do empreendimento.";
-      if (error.message?.includes("ReplicaSetNoPrimary") || (typeof error.message === 'string' && error.message.includes("500")) || error.message?.includes("429")) {
-        errorMessage = "Ocorreu um problema temporário de conexão. Por favor, tente recarregar a página.";
+      const empData = await Empreendimento.filter({ id: empreendimentoId });
+      if (empData && empData.length > 0) {
+        setEmpreendimento(empData[0]);
+      } else {
+        setError("Empreendimento não encontrado.");
       }
-      console.error(errorMessage);
+    } catch (err) {
+      console.error("Erro ao carregar empreendimento:", err);
+      setError("Falha ao carregar dados do empreendimento.");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [empreendimentoId]);
 
-  // Removido o carregamento duplicado de planejamentos. Agora só carrega empreendimento.
   useEffect(() => {
-    if (empreendimentoId) {
-      loadEmpreendimento();
-    }
-  }, [empreendimentoId, refreshTrigger, loadEmpreendimento]);
-
-  const handleRefresh = () => {
     loadEmpreendimento();
-  };
-
-  const handleCloseModal = () => {
-    setShowModal(false);
-  };
-
-  if (!empreendimentoId) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">
-            Empreendimento não encontrado
-          </h2>
-          <Link to={createPageUrl("SeletorPlanejamento")}>
-            <Button>Voltar para Seleção</Button>
-          </Link>
-        </Card>
-      </div>
-    );
-  }
+  }, [loadEmpreendimento]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="p-6 md:p-8">
-          <div className="max-w-7xl mx-auto">
-            <Skeleton className="h-12 w-96 mb-6" />
-            <Skeleton className="h-[600px] w-full" />
-          </div>
-        </div>
+      <div className="p-8 space-y-6">
+        <Skeleton className="h-10 w-48 mb-4" />
+        <Skeleton className="h-24 w-full mb-8" />
+        <Skeleton className="h-12 w-full mb-4" />
+        <Skeleton className="h-96 w-full" />
       </div>
     );
   }
 
-  if (!empreendimento) {
+  if (error || !empreendimento) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">
-            Empreendimento não encontrado
-          </h2>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-800 mb-2">{error || "Empreendimento não encontrado."}</h2>
+          <p className="text-gray-600 mb-6">Não foi possível carregar os dados do planejamento.</p>
           <Link to={createPageUrl("SeletorPlanejamento")}>
-            <Button>Voltar para Seleção</Button>
+            <Button variant="outline">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Voltar para Seleção
+            </Button>
           </Link>
-        </Card>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="p-6 md:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <CalendarDays className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  Planejamento - {empreendimento?.nome || 'Carregando...'}
-                </h1>
-                <p className="text-gray-600">
-                  Gerencie o planejamento de atividades e cronograma
-                </p>
-              </div>
-            </div>
-
-            <Button
-              onClick={handleRefresh}
-              disabled={isLoading}
-              variant="outline"
-              className="shadow-lg"
-              size="lg"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Atualizar
+      <div className="p-6 md:p-8 space-y-6">
+        <div className="mb-4">
+          <Link to={createPageUrl("SeletorPlanejamento")}>
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Voltar para Seleção
             </Button>
-          </div>
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 max-w-xl">
-              <TabsTrigger value="planejamento" className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Curva S
-              </TabsTrigger>
-              <TabsTrigger value="alocacao" className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Alocação Equipe
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="planejamento">
-              <PlanejamentoTab empreendimentoId={empreendimento.id} />
-            </TabsContent>
-
-            <TabsContent value="alocacao">
-              <AlocacaoEquipeTab empreendimentoId={empreendimento.id} />
-            </TabsContent>
-          </Tabs>
+          </Link>
         </div>
-      </div>
 
-      <NovoPlanejamentoModal
-        isOpen={showModal}
-        onClose={handleCloseModal}
-        empreendimentoId={empreendimentoId}
-        empreendimentos={empreendimentos}
-      />
+        <EmpreendimentoHeader empreendimento={empreendimento} />
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 bg-white shadow-sm text-center">
+            <TabsTrigger value="planejamento" className="flex flex-col items-center justify-center">
+              <span className="flex items-center justify-center w-full">
+                <Calendar className="w-4 h-4 mr-2" />
+                <span className="w-full text-center">Planejamento</span>
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="sobras" className="flex flex-col items-center justify-center">
+              <span className="flex items-center justify-center w-full">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                <span className="w-full text-center">Sobras</span>
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="configuracao" className="flex flex-col items-center justify-center">
+              <span className="flex items-center justify-center w-full">
+                <Settings className="w-4 h-4 mr-2" />
+                <span className="w-full text-center">Configuração</span>
+              </span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="planejamento" className="mt-6">
+            <PlanejamentoTab empreendimentoId={empreendimentoId} />
+          </TabsContent>
+
+          <TabsContent value="sobras" className="mt-6">
+            <SobrasTab empreendimentoId={empreendimentoId} />
+          </TabsContent>
+
+          <TabsContent value="configuracao" className="mt-6">
+            <ConfiguracaoTab empreendimentoId={empreendimentoId} />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

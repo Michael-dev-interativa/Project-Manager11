@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import CurvaS from './pages/CurvaS.jsx';
+import AlocacaoEquipePage from './pages/AlocacaoEquipe.jsx';
+import CalendarioLayout from './pages/CalendarioLayout.jsx';
 import AtaPlanejamento from './pages/AtaPlanejamento.jsx';
 import { ActivityTimerProvider } from './components/contexts/ActivityTimerContext';
 import { UserProvider } from './components/contexts/UserContext';
@@ -54,42 +56,21 @@ function App() {
                     <div className="h-full">
                       <Routes>
                         <Route path="/login" element={<Login />} />
-                        <Route path="/" element={
-                          <ProtectedRoute><Dashboard /></ProtectedRoute>
-                        } />
-                        <Route path="/curva-s" element={
-                          <ProtectedRoute><CurvaS /></ProtectedRoute>
-                        } />
-                        <Route path="/usuarios" element={
-                          <ProtectedRoute><Usuarios /></ProtectedRoute>
-                        } />
-                        <Route path="/empreendimentos" element={
-                          <ProtectedRoute><Empreendimentos /></ProtectedRoute>
-                        } />
-                        <Route path="/empreendimentos/:id" element={
-                          <ProtectedRoute><EmpreendimentoDetalhes /></ProtectedRoute>
-                        } />
-                        <Route path="/planejamento" element={
-                          <ProtectedRoute><Planejamento /></ProtectedRoute>
-                        } />
-                        <Route path="/seletor-planejamento" element={
-                          <ProtectedRoute><SeletorPlanejamento /></ProtectedRoute>
-                        } />
-                        <Route path="/relatorios" element={
-                          <ProtectedRoute><Relatorios /></ProtectedRoute>
-                        } />
-                        <Route path="/atividades-rapidas" element={
-                          <ProtectedRoute><AtividadesRapidas /></ProtectedRoute>
-                        } />
-                        <Route path="/analise-concepcao" element={
-                          <ProtectedRoute><AnaliseConcepcao /></ProtectedRoute>
-                        } />
-                        <Route path="/configuracoes" element={
-                          <ProtectedRoute><Configuracoes /></ProtectedRoute>
-                        } />
-                        <Route path="/ata-planejamento" element={
-                          <ProtectedRoute><AtaPlanejamento /></ProtectedRoute>
-                        } />
+                        <Route element={<ProtectedRoute><CalendarioLayout /></ProtectedRoute>}>
+                          <Route index element={<Dashboard />} />
+                          <Route path="curva-s" element={<CurvaS />} />
+                          <Route path="alocacao-equipe" element={<AlocacaoEquipePage />} />
+                        </Route>
+                        <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
+                        <Route path="/empreendimentos" element={<ProtectedRoute><Empreendimentos /></ProtectedRoute>} />
+                        <Route path="/empreendimentos/:id" element={<ProtectedRoute><EmpreendimentoDetalhes /></ProtectedRoute>} />
+                        <Route path="/planejamento" element={<ProtectedRoute><Planejamento /></ProtectedRoute>} />
+                        <Route path="/seletor-planejamento" element={<ProtectedRoute><SeletorPlanejamento /></ProtectedRoute>} />
+                        <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
+                        <Route path="/atividades-rapidas" element={<ProtectedRoute><AtividadesRapidas /></ProtectedRoute>} />
+                        <Route path="/analise-concepcao" element={<ProtectedRoute><AnaliseConcepcao /></ProtectedRoute>} />
+                        <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
+                        <Route path="/ata-planejamento" element={<ProtectedRoute><AtaPlanejamento /></ProtectedRoute>} />
                       </Routes>
                       <GlobalExecucaoModal />
                     </div>

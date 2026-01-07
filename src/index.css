@@ -1,3 +1,11 @@
+/* Forçar texto branco no botão primário */
+.bg-primary,
+.bg-primary:focus,
+.bg-primary:active,
+.bg-primary:hover {
+  color: #fff !important;
+}
+
 * {
   margin: 0;
   padding: 0;

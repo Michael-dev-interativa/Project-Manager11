@@ -6,13 +6,13 @@
 }
 
 .dialog-content {
-  background: #fff;
-  border-radius: 8px;
+  background: #fff !important;
+  border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
   max-width: 95vw;
   max-height: 90vh;
   width: 600px;
@@ -21,6 +21,14 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  border: 1.5px solid #e5e7eb;
+}
+
+.dialog-overlay {
+  background: rgba(0, 0, 0, 0.6) !important;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
 }
 
 .dialog-header {

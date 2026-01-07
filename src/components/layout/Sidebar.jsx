@@ -37,17 +37,14 @@ export default function Sidebar({ isOpen, onClose }) {
     <div className="w-64 bg-white shadow-lg min-h-screen border-r border-gray-200 relative">
       {/* Logo da Empresa */}
       <div className="p-6 text-center border-b border-gray-200">
-        <div className="mb-3">
+        <div className="mb-0">
           <img
             src="/LogoInt.png"
             alt="Logo Interativa"
-            className="w-20 h-20 mx-auto object-contain"
+            className="w-40 h-40 mx-auto object-contain"
           />
         </div>
-        <div className="text-sm font-bold text-gray-800 tracking-wide">
-          Interativa
-        </div>
-        <div className="text-xs text-gray-600 mt-1">
+        <div className="text-xs text-gray-600 mt-0 text-center" style={{ marginTop: '-8px' }}>
           Gestão de Projetos
         </div>
         <button

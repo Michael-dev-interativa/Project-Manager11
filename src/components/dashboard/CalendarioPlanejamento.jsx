@@ -36,15 +36,24 @@ import { isActivityOverdue as isOverdueShared, distribuirHorasPorDias } from '..
 import { retryWithBackoff } from '../utils/apiUtils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Filter, Trash2, RefreshCw, LineChart, ChevronRight, ChevronLeft, Calendar } from 'lucide-react';
+import { Filter, Trash2, RefreshCw, LineChart, ChevronRight, ChevronLeft, Calendar, CalendarDays } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
-// Função para converter string de data para Date local corretamente
+// Função para converter string de data para Date local corretamente (evita mudança de dia por fuso)
 const parseLocalDate = (dateString) => {
   if (!dateString) return null;
   if (dateString instanceof Date) return dateString;
+
   if (typeof dateString === 'string') {
+    // Se for apenas data (YYYY-MM-DD), criar Date local explícito
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-').map(Number);
+      // new Date(year, monthIndex, day) cria no fuso local sem deslocamentos
+      return new Date(year, month - 1, day);
+    }
+
+    // Para strings com horário, usar parseISO normalmente
     const parsed = parseISO(dateString);
     if (isValid(parsed)) return parsed;
   }
@@ -168,14 +177,6 @@ const CalendarFilters = ({
     <>
       {/* Abas: Calendário (ativo) e Curva S */}
       <div className="flex items-center gap-4 p-3 mb-2 bg-white border border-gray-200 rounded-xl">
-        <Link to="/" className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold bg-gray-900 text-white">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2a1 1 0 011 1v1h8V3a1 1 0 112 0v1h1a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h1V3a1 1 0 112 0v1zm12 6H5v10h14V8z" /></svg>
-          Calendário
-        </Link>
-        <Link to="/curva-s" className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-800 hover:bg-gray-100">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18" /><path d="M6 15c3-6 6-6 9-3 3 3 3 3 3 3" /></svg>
-          Curva S
-        </Link>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-gray-100 bg-gray-50/50">
         <div className="flex flex-wrap items-center gap-4">
@@ -585,10 +586,10 @@ const ActivityItem = ({ plano, dayKey, onDelete, onUpdate, executorMap, allPlane
 const DailyActivityGroup = ({ empreendimento, executor, atividades, isExpanded, onToggle, disciplinas, dayKey, onActivityDelete, onShowPrevisao, executorMap, allPlanejamentos, isReprogramando, canReprogram, selectedActivities, onToggleSelect, hasSelections, groupKey, provided, isDragging, onStart, onResume }) => {
 
   // Novo: Estado local para atividades do grupo
-  const [atividadesGrupo, setAtividadesGrupo] = useState(atividades);
+  const [atividadesGrupo, setAtividadesGrupo] = useState(Array.isArray(atividades) ? atividades : []);
 
   useEffect(() => {
-    setAtividadesGrupo(atividades);
+    setAtividadesGrupo(Array.isArray(atividades) ? atividades : []);
   }, [atividades]);
 
   const totalHoras = useMemo(() => {
@@ -615,7 +616,7 @@ const DailyActivityGroup = ({ empreendimento, executor, atividades, isExpanded, 
       acc[d.nome] = d.cor;
       return acc;
     }, {});
-    const uniqueDisciplines = [...new Set(atividadesGrupo.map(a => a.atividade?.disciplina).filter(Boolean))];
+    const uniqueDisciplines = [...new Set((atividadesGrupo || []).map(a => a.atividade?.disciplina).filter(Boolean))];
     return uniqueDisciplines.map(dName => ({
       name: dName,
       color: disciplineMap[dName] || '#A1A1AA'
@@ -845,8 +846,10 @@ const ActivityContainer = ({ activities, containerClass = "", disciplinas, dayKe
 
 // --- Sub-componente para a Visualização Mensal ---
 const MonthView = ({ date, activitiesByDay, disciplinas, ...props }) => {
-  const start = startOfMonth(date);
-  const end = endOfMonth(date);
+  // Começa no início da semana contendo o primeiro dia do mês (Domingo)
+  const start = startOfWeek(startOfMonth(date), { weekStartsOn: 0 });
+  // Termina no final da semana contendo o último dia do mês (Sábado)
+  const end = endOfWeek(endOfMonth(date), { weekStartsOn: 0 });
   const monthDays = eachDayOfInterval({ start, end });
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   return (
@@ -880,8 +883,8 @@ const MonthView = ({ date, activitiesByDay, disciplinas, ...props }) => {
 
 // --- Sub-componente para a Visualização Semanal ---
 const WeekView = ({ date, activitiesByDay, disciplinas, ...props }) => {
-  const start = startOfWeek(date, { locale: ptBR });
-  const end = endOfWeek(date, { locale: ptBR });
+  const start = startOfWeek(date, { weekStartsOn: 0 });
+  const end = endOfWeek(date, { weekStartsOn: 0 });
   const weekDays = eachDayOfInterval({ start, end });
   const weekLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   return (
@@ -917,28 +920,29 @@ const WeekView = ({ date, activitiesByDay, disciplinas, ...props }) => {
 const DayView = ({ date, activitiesByDay, disciplinas, ...props }) => {
   const dayKey = format(date, 'yyyy-MM-dd');
   const activities = activitiesByDay[dayKey] || [];
+  const headerText = format(date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR });
+
   return (
-    <div className="w-full">
-      <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
-        {Array.from({ length: 7 }).map((_, idx) => (
-          <div key={idx} className="py-2 text-center font-semibold text-gray-700 border-r border-gray-200 last:border-r-0">{idx === date.getDay() ? 'Hoje' : ''}</div>
-        ))}
+    <div className="w-full border-t border-gray-200 bg-white min-h-[60vh]">
+      <div className="py-3 text-center font-semibold text-gray-700 border-b border-gray-200">
+        {headerText} — Hoje
       </div>
-      <div className="grid grid-cols-7 gap-1 border-t border-l border-gray-200 min-h-[60vh] bg-white">
-        {Array.from({ length: 7 }).map((_, idx) => (
-          <div className="border-r border-b border-gray-200 min-h-[100px] relative" key={idx}>
-            {idx === date.getDay() && (
-              <ActivityContainer
-                key={dayKey}
-                activities={activities}
-                containerClass="h-full pt-5"
-                disciplinas={disciplinas}
-                dayKey={dayKey}
-                {...props}
-              />
-            )}
+      <div className="p-6">
+        {activities.length > 0 ? (
+          <ActivityContainer
+            key={dayKey}
+            activities={activities}
+            containerClass="space-y-4"
+            disciplinas={disciplinas}
+            dayKey={dayKey}
+            {...props}
+          />
+        ) : (
+          <div className="text-center py-12 text-gray-500">
+            <CalendarDays className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            Nenhuma atividade planejada para este dia.
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

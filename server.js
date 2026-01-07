@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -8,13 +7,71 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 const app = express();
+
+
 // Middleware para interpretar JSON
 app.use(express.json());
 // Libera CORS para o frontend
 app.use(cors({
-  origin: [/^http:\/\/localhost:3000$/, /^http:\/\/localhost:3002$/, /^http:\/\/192\.168\.[0-9]+\.[0-9]+:3002$/],
+  origin: [/^http:\/\/localhost:3000$/, /^http:\/\/localhost:3002$/, /^http:\/\/192\\.168\\.[0-9]+\\.[0-9]+:3002$/],
   credentials: true
 }));
+
+// --- ROTAS PARA EQUIPE E ALOCAÇÃO EQUIPE --- //
+let equipes = [
+  { id: 1, nome: 'Equipe Padrão', cor: '#3B82F6', descricao: 'Equipe inicial' }
+];
+let alocacoesEquipe = [];
+let equipeIdCounter = 2;
+let alocacaoEquipeIdCounter = 1;
+
+// CRUD Equipe
+app.get('/api/Equipe', (req, res) => {
+  res.json(equipes);
+});
+app.post('/api/Equipe', (req, res) => {
+  const { nome, cor, descricao } = req.body;
+  const nova = { id: equipeIdCounter++, nome, cor, descricao };
+  equipes.push(nova);
+  res.status(201).json(nova);
+});
+app.put('/api/Equipe/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const idx = equipes.findIndex(e => e.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Equipe não encontrada' });
+  equipes[idx] = { ...equipes[idx], ...req.body };
+  res.json(equipes[idx]);
+
+
+});
+app.delete('/api/Equipe/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  equipes = equipes.filter(e => e.id !== id);
+  res.status(204).end();
+});
+
+// CRUD AlocacaoEquipe
+app.get('/api/AlocacaoEquipe', (req, res) => {
+  res.json(alocacoesEquipe);
+});
+app.post('/api/AlocacaoEquipe', (req, res) => {
+  const nova = { id: alocacaoEquipeIdCounter++, ...req.body };
+  alocacoesEquipe.push(nova);
+  res.status(201).json(nova);
+});
+app.put('/api/AlocacaoEquipe/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const idx = alocacoesEquipe.findIndex(a => a.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Alocação não encontrada' });
+  alocacoesEquipe[idx] = { ...alocacoesEquipe[idx], ...req.body };
+  res.json(alocacoesEquipe[idx]);
+});
+app.delete('/api/AlocacaoEquipe/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  alocacoesEquipe = alocacoesEquipe.filter(a => a.id !== id);
+  res.status(204).end();
+
+});
 // Middleware para responder OPTIONS automaticamente
 app.options('/api/planejamento-atividades/:id', (req, res) => {
   res.sendStatus(204);
@@ -31,6 +88,7 @@ async function ensureEmpreendimentoValorHoraColumn() {
 }
 
 // PUT: atualiza um PlanejamentoAtividade por ID
+
 app.put('/api/planejamento-atividades/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -74,6 +132,7 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
             const diffHoras = (termino - inicio) / 3600000; // ms -> horas
             const horas = Math.max(0, diffHoras);
             const total_planejado = Number(row.tempo_planejado || 0);
+
             data.tempo_executado = Number(horas.toFixed(4));
             data.sobra_real = total_planejado - data.tempo_executado;
             data.termino_real = termino.toISOString();
@@ -296,7 +355,7 @@ app.get('/auth/google/callback',
   }),
   (req, res) => {
     // Redireciona para o frontend após login
-    res.redirect('http://localhost:3001');
+    res.redirect('http://localhost:3000');
   }
 );
 
@@ -1444,6 +1503,111 @@ app.put('/api/planejamento-documentos/:id', async (req, res) => {
 // Adicionando logs para verificar inicialização do servidor e execução da rota
 console.log('🔄 Inicializando servidor...');
 
+// --- ROTAS CRUD PARA DATACADASTRO --- //
+// GET: lista todos os DataCadastro ou filtra por empreendimento_id/documento_id
+app.get('/api/datacadastro', async (req, res) => {
+  try {
+    const { empreendimento_id, documento_id } = req.query;
+    let query = 'SELECT * FROM public."DataCadastro"';
+    const values = [];
+    const where = [];
+    if (empreendimento_id) {
+      where.push('empreendimento_id = $' + (values.length + 1));
+      values.push(parseInt(empreendimento_id));
+    }
+    if (documento_id) {
+      where.push('documento_id = $' + (values.length + 1));
+      values.push(parseInt(documento_id));
+    }
+    if (where.length > 0) {
+      query += ' WHERE ' + where.join(' AND ');
+    }
+    query += ' ORDER BY ordem ASC, id ASC';
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao buscar DataCadastro', details: error.message });
+  }
+});
+
+// POST: cria novo DataCadastro
+app.post('/api/datacadastro', async (req, res) => {
+  try {
+    const { empreendimento_id, ordem, documento_id, datas } = req.body;
+    if (!empreendimento_id || !ordem || !documento_id || !datas) {
+      return res.status(400).json({ error: 'Campos obrigatórios: empreendimento_id, ordem, documento_id, datas' });
+    }
+    const result = await pool.query(
+      'INSERT INTO public."DataCadastro" (empreendimento_id, ordem, documento_id, datas) VALUES ($1, $2, $3, $4) RETURNING *',
+      [parseInt(empreendimento_id), parseInt(ordem), parseInt(documento_id), JSON.stringify(datas)]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao criar DataCadastro', details: error.message });
+  }
+});
+
+// PUT: atualiza DataCadastro por id
+app.put('/api/datacadastro/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { empreendimento_id, ordem, documento_id, datas } = req.body;
+    const setParts = [];
+    const values = [];
+    let idx = 1;
+    if (empreendimento_id !== undefined) {
+      setParts.push('empreendimento_id = $' + idx);
+      values.push(parseInt(empreendimento_id));
+      idx++;
+    }
+    if (ordem !== undefined) {
+      setParts.push('ordem = $' + idx);
+      values.push(parseInt(ordem));
+      idx++;
+    }
+    if (documento_id !== undefined) {
+      setParts.push('documento_id = $' + idx);
+      values.push(parseInt(documento_id));
+      idx++;
+    }
+    if (datas !== undefined) {
+      setParts.push('datas = $' + idx);
+      values.push(JSON.stringify(datas));
+      idx++;
+    }
+    if (setParts.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo válido para atualizar' });
+    }
+    const sql = `UPDATE public."DataCadastro" SET ${setParts.join(', ')} WHERE id = $${idx} RETURNING *`;
+    values.push(id);
+    const result = await pool.query(sql, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'DataCadastro não encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao atualizar DataCadastro', details: error.message });
+  }
+});
+
+// DELETE: exclui DataCadastro por id
+app.delete('/api/datacadastro/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await pool.query('DELETE FROM public."DataCadastro" WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'DataCadastro não encontrado' });
+    }
+    res.json({ message: 'DataCadastro excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao excluir DataCadastro', details: error.message });
+  }
+});
+
 // Rota para buscar um empreendimento específico por ID
 app.get('/api/Empreendimento/:id', async (req, res) => {
   const id = parseInt(req.params.id);
@@ -1718,6 +1882,111 @@ process.on('SIGINT', async () => {
 });
 
 // Fim do arquivo
+
+// --- ROTAS CRUD PARA DATACADASTRO --- //
+// GET: lista todos os DataCadastro ou filtra por empreendimento_id/documento_id
+app.get('/api/datacadastro', async (req, res) => {
+  try {
+    const { empreendimento_id, documento_id } = req.query;
+    let query = 'SELECT * FROM public."DataCadastro"';
+    const values = [];
+    const where = [];
+    if (empreendimento_id) {
+      where.push('empreendimento_id = $' + (values.length + 1));
+      values.push(parseInt(empreendimento_id));
+    }
+    if (documento_id) {
+      where.push('documento_id = $' + (values.length + 1));
+      values.push(parseInt(documento_id));
+    }
+    if (where.length > 0) {
+      query += ' WHERE ' + where.join(' AND ');
+    }
+    query += ' ORDER BY ordem ASC, id ASC';
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao buscar DataCadastro', details: error.message });
+  }
+});
+
+// POST: cria novo DataCadastro
+app.post('/api/datacadastro', async (req, res) => {
+  try {
+    const { empreendimento_id, ordem, documento_id, datas } = req.body;
+    if (!empreendimento_id || !ordem || !documento_id || !datas) {
+      return res.status(400).json({ error: 'Campos obrigatórios: empreendimento_id, ordem, documento_id, datas' });
+    }
+    const result = await pool.query(
+      'INSERT INTO public."DataCadastro" (empreendimento_id, ordem, documento_id, datas) VALUES ($1, $2, $3, $4) RETURNING *',
+      [parseInt(empreendimento_id), parseInt(ordem), parseInt(documento_id), JSON.stringify(datas)]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao criar DataCadastro', details: error.message });
+  }
+});
+
+// PUT: atualiza DataCadastro por id
+app.put('/api/datacadastro/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { empreendimento_id, ordem, documento_id, datas } = req.body;
+    const setParts = [];
+    const values = [];
+    let idx = 1;
+    if (empreendimento_id !== undefined) {
+      setParts.push('empreendimento_id = $' + idx);
+      values.push(parseInt(empreendimento_id));
+      idx++;
+    }
+    if (ordem !== undefined) {
+      setParts.push('ordem = $' + idx);
+      values.push(parseInt(ordem));
+      idx++;
+    }
+    if (documento_id !== undefined) {
+      setParts.push('documento_id = $' + idx);
+      values.push(parseInt(documento_id));
+      idx++;
+    }
+    if (datas !== undefined) {
+      setParts.push('datas = $' + idx);
+      values.push(JSON.stringify(datas));
+      idx++;
+    }
+    if (setParts.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo válido para atualizar' });
+    }
+    const sql = `UPDATE public."DataCadastro" SET ${setParts.join(', ')} WHERE id = $${idx} RETURNING *`;
+    values.push(id);
+    const result = await pool.query(sql, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'DataCadastro não encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao atualizar DataCadastro', details: error.message });
+  }
+});
+
+// DELETE: exclui DataCadastro por id
+app.delete('/api/datacadastro/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await pool.query('DELETE FROM public."DataCadastro" WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'DataCadastro não encontrado' });
+    }
+    res.json({ message: 'DataCadastro excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir DataCadastro:', error);
+    res.status(500).json({ error: 'Erro ao excluir DataCadastro', details: error.message });
+  }
+});
 
 
 
@@ -2776,5 +3045,118 @@ app.delete('/api/ata-reuniao/:id', async (req, res) => {
   } catch (error) {
     console.error('Erro ao excluir ata de reunião:', error);
     res.status(500).json({ error: 'Erro ao excluir ata de reunião', details: error.message });
+  }
+});
+
+// --- ROTAS PARA PRE (Planilha de Registro de Emails, Atas e Documentos) ---
+
+// Listar PREs (com filtro por empreendimento_id opcional)
+app.get('/api/PRE', async (req, res) => {
+  try {
+    const { empreendimento_id } = req.query;
+    let query = 'SELECT * FROM public."PRE"';
+    const params = [];
+    if (empreendimento_id) {
+      query += ' WHERE empreendimento_id = $1';
+      params.push(parseInt(empreendimento_id));
+    }
+    query += ' ORDER BY id';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('[PRE] Erro ao listar:', error);
+    res.status(500).json({ error: 'Erro ao listar PREs', details: error.message });
+  }
+});
+
+// Buscar PRE por id
+app.get('/api/PRE/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('SELECT * FROM public."PRE" WHERE id = $1', [parseInt(id)]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'PRE não encontrado' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('[PRE] Erro ao buscar por id:', error);
+    res.status(500).json({ error: 'Erro ao buscar PRE', details: error.message });
+  }
+});
+
+// Criar PRE
+app.post('/api/PRE', async (req, res) => {
+  try {
+    const {
+      empreendimento_id, item, data, de, descritiva, localizacao,
+      assunto, comentario, status, resposta, imagens
+    } = req.body;
+    const result = await pool.query(
+      `INSERT INTO public."PRE"
+      (empreendimento_id, item, data, de, descritiva, localizacao, assunto, comentario, status, resposta, imagens)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *`,
+      [
+        empreendimento_id, item, data, de, descritiva, localizacao,
+        assunto, comentario, status, resposta, imagens ? JSON.stringify(imagens) : '[]'
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('[PRE] Erro ao criar:', error);
+    res.status(500).json({ error: 'Erro ao criar PRE', details: error.message });
+  }
+});
+
+// Atualizar PRE
+app.put('/api/PRE/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      empreendimento_id, item, data, de, descritiva, localizacao,
+      assunto, comentario, status, resposta, imagens
+    } = req.body;
+    const result = await pool.query(
+      `UPDATE public."PRE" SET
+        empreendimento_id = $1, item = $2, data = $3, de = $4, descritiva = $5,
+        localizacao = $6, assunto = $7, comentario = $8, status = $9, resposta = $10, imagens = $11, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $12 RETURNING *`,
+      [
+        empreendimento_id, item, data, de, descritiva, localizacao,
+        assunto, comentario, status, resposta, imagens ? JSON.stringify(imagens) : '[]', id
+      ]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'PRE não encontrado' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('[PRE] Erro ao atualizar:', error);
+    res.status(500).json({ error: 'Erro ao atualizar PRE', details: error.message });
+  }
+});
+
+// Deletar PRE
+app.delete('/api/PRE/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM public."PRE" WHERE id = $1 RETURNING *', [parseInt(id)]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'PRE não encontrado' });
+    res.json({ message: 'PRE deletado com sucesso' });
+  } catch (error) {
+    console.error('[PRE] Erro ao deletar:', error);
+    res.status(500).json({ error: 'Erro ao deletar PRE', details: error.message });
+  }
+});
+
+// Adicione este bloco no seu server.js (após a configuração do pool e antes do app.listen)
+
+app.get('/api/SobraUsuario', async (req, res) => {
+  const { empreendimento_id } = req.query;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM "SobraUsuario" WHERE empreendimento_id = $1',
+      [empreendimento_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar sobras de usuário:', error);
+    res.status(500).json({ error: 'Erro ao buscar sobras de usuário' });
   }
 });

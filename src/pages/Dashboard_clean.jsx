@@ -1,422 +1,271 @@
-import React, { useState, useEffect, useCallback, useContext } from "react";
-import { useNavigate } from 'react-router-dom';
-import { Empreendimento, Atividade, PlanejamentoAtividade, Usuario } from "../entities/all";
-import {
-  RefreshCw,
-  Plus,
-  BarChart3,
-  Building2,
-  Calendar as CalendarIcon,
-  Settings,
-  AlertTriangle,
-  Filter,
-  TrendingUp,
-  ChevronLeft,
-  ChevronRight
-} from "lucide-react";
-import { ActivityTimerContext } from "../components/contexts/ActivityTimerContext";
+import React, { useState, useEffect, useCallback, memo, useContext, useRef } from "react";
+import { Empreendimento, Disciplina, Atividade, Documento, Execucao, PlanejamentoAtividade, Usuario, AtividadeGenerica } from "@/entities/all";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Building2, Users, FileText, BarChart3, Plus, MapPin, RefreshCw, Calendar, TrendingUp, UsersRound } from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { ActivityTimerContext } from "@/components/contexts/ActivityTimerContext";
+import ExecucoesPorUsuario from "../components/dashboard/ExecucoesPorUsuario";
+import QuickActions from "../components/dashboard/QuickActions";
+import CalendarioPlanejamento from "../components/dashboard/CalendarioPlanejamento";
+import AlertaAtrasosEntrega from "../components/dashboard/AlertaAtrasosEntrega";
+import CurvaSPlanejamento from "../components/dashboard/CurvaSPlanejamento";
+import AlocacaoEquipeTab from "../components/empreendimento/AlocacaoEquipeTab";
+import { Skeleton } from "@/components/ui/skeleton";
+import { retryWithBackoff, delay } from "../components/utils/apiUtils";
+import { parseISO, subDays, isValid, format } from 'date-fns';
+import { getNextWorkingDay, distribuirHorasPorDias } from '../components/utils/DateCalculator';
+import NovoPlanejamentoModal from "../components/planejamento/NovoPlanejamentoModal";
 
-// Componentes do Dashboard
-function SimpleCard({ children, className = "" }) {
-  return (
-    <div className={`bg-white rounded-lg shadow-sm border p-4 ${className}`}>
-      {children}
-    </div>
-  );
-}
-
-function SimpleButton({ children, onClick, disabled, variant = "primary", className = "" }) {
-  const baseClass = "px-4 py-2 rounded-lg font-medium transition-colors text-sm";
-  const variantClass = variant === "primary"
-    ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300"
-    : variant === "dark"
-      ? "bg-gray-800 text-white hover:bg-gray-900 disabled:bg-gray-300"
-      : variant === "secondary"
-        ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
-        : "bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:bg-gray-100";
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseClass} ${variantClass} ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-// Componente de loading
-function LoadingSkeleton({ className = "h-4 w-full" }) {
-  return (
-    <div className={`animate-pulse bg-gray-200 rounded ${className}`}></div>
-  );
-}
-
-const fetchAllRecords = async (entity, entityName = 'entidade') => {
-  try {
-    const records = await entity.list();
-    console.log(`✅ Total de ${entityName} carregados: ${records?.length || 0}`);
-    return records || [];
-  } catch (error) {
-    console.error(`❌ Erro ao carregar ${entityName}:`, error);
-    return [];
-  }
-};
-
-// Componente de Calendário
-function CalendarComponent({ currentDate, setCurrentDate }) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-
-  const weekDays = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-  const shortWeekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
-
-    const days = [];
-
-    // Adicionar dias vazios do mês anterior
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(null);
-    }
-
-    // Adicionar dias do mês atual
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push(new Date(year, month, day));
-    }
-
-    return days;
-  };
-
-  const days = getDaysInMonth(currentMonth);
-
-  const navigateMonth = (direction) => {
-    const newMonth = new Date(currentMonth);
-    newMonth.setMonth(newMonth.getMonth() + direction);
-    setCurrentMonth(newMonth);
-  };
-
-  // Formatação da data para exibir período da semana
-  const formatWeekPeriod = () => {
-    const startOfWeek = new Date(currentMonth);
-    startOfWeek.setDate(11); // 11 Jan como na imagem
-    const endOfWeek = new Date(currentMonth);
-    endOfWeek.setDate(17); // 17 Jan como na imagem
-
-    return `${startOfWeek.getDate()} Jan - ${endOfWeek.getDate()} Jan, ${endOfWeek.getFullYear()}`;
-  };
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border">
-      {/* Header do Calendário */}
-      <div className="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4 text-blue-600" />
-            <h2 className="text-base font-semibold text-gray-800">
-              Calendário - Todos Os Usuários ()
-            </h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <SimpleButton variant="secondary" className="flex items-center gap-2 text-xs px-3 py-1">
-              <BarChart3 className="w-3 h-3" />
-              Previsão de Entrega
-            </SimpleButton>
-            <SimpleButton variant="secondary" className="flex items-center gap-2 text-xs px-3 py-1">
-              <RefreshCw className="w-3 h-3" />
-              Atualizar
-            </SimpleButton>
-            <span className="text-xs text-gray-600">Hoje</span>
-          </div>
-        </div>
-
-        {/* Controles e Filtros */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Filter className="w-3 h-3 text-orange-500" />
-              <select className="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
-                <option>⚠️ Todos os Usuários...</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <select className="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
-                <option>Todas as Disciplinas</option>
-              </select>
-            </div>
-            <button className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1">
-              🗑️ Limpar Filtros
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex border border-gray-300 rounded">
-              <button className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-l">
-                Dia
-              </button>
-              <button className="px-2 py-1 text-xs bg-gray-800 text-white border-l border-gray-300">
-                Semana
-              </button>
-              <button className="px-2 py-1 text-xs bg-gray-100 text-gray-700 border-l border-gray-300 rounded-r">
-                Mês
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navegação do Período */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
-        <button
-          onClick={() => navigateMonth(-1)}
-          className="flex items-center gap-1 text-gray-600 hover:text-gray-800"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
-        <h3 className="text-lg font-semibold text-gray-800">
-          {formatWeekPeriod()}
-        </h3>
-
-        <button
-          onClick={() => navigateMonth(1)}
-          className="flex items-center gap-1 text-gray-600 hover:text-gray-800"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Cabeçalho dos Dias da Semana */}
-      <div className="grid grid-cols-7 border-b bg-gray-50">
-        {weekDays.map((day, index) => {
-          // Destacar os dias da semana como na imagem
-          const dayNumber = 11 + index; // 11, 12, 13, 14, 15, 16, 17
-          return (
-            <div
-              key={day}
-              className="px-2 py-3 text-center border-r last:border-r-0"
-            >
-              <div className="text-xs font-medium text-gray-600">
-                {day.substring(0, day === "Domingo" ? 7 : day === "Segunda" ? 8 : day === "Quarta" ? 6 : day.length)}, {dayNumber}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Área do Calendário */}
-      <div className="grid grid-cols-7">
-        {weekDays.map((day, index) => (
-          <div
-            key={index}
-            className="border-r border-b last:border-r-0 p-1 hover:bg-gray-50 transition-colors"
-            style={{ height: '350px' }}
-          >
-            {/* Área vazia para eventos/atividades */}
-            <div className="h-full flex flex-col">
-              <div className="flex-1">
-                {/* Aqui seriam exibidas as atividades do dia */}
-                {/* Por enquanto vazio como na imagem */}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const MemoizedExecucoesPorUsuario = memo(ExecucoesPorUsuario);
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const { user, isLoading: isUserLoading, triggerDataRefresh } = useContext(ActivityTimerContext) || {};
+  const [stats, setStats] = useState({ empreendimentos: 0, disciplinas: 0, atividades: 0, ativos: 0 });
+  const [areStatsLoading, setAreStatsLoading] = useState(true);
 
-  // Estados do Dashboard
-  const [usuarios, setUsuarios] = useState([]);
-  const [empreendimentos, setEmpreendimentos] = useState([]);
+  const {
+    user,
+    isLoading: isUserLoading,
+    updateKey,
+    atividadesGenericas,
+    allEmpreendimentos,
+    allUsers,
+    isLoadingPlanejamentos,
+    hasPermission,
+    isAdmin,
+    nivelUsuario
+  } = useContext(ActivityTimerContext);
+
+  const [disciplinas, setDisciplinas] = useState([]);
   const [atividades, setAtividades] = useState([]);
-  const [planejamentos, setPlanejamentos] = useState([]);
-  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState('calendar');
+  const [showNovoPlanejamentoModal, setShowNovoPlanejamentoModal] = useState(false);
+
+  const isColaboradorView = nivelUsuario === 1 && !isAdmin;
+  const canCreatePlanning = hasPermission('coordenador');
+
+  const isLoadingRef = useRef(false);
+  const hasLoadedOnce = useRef(false);
 
   const loadDashboardData = useCallback(async () => {
+    if (!user) {
+      setIsDashboardLoading(false);
+      return;
+    }
+
+    if (isLoadingRef.current) {
+      console.log('⏸️ [Dashboard] Carregamento já em andamento, ignorando...');
+      return;
+    }
+
+    isLoadingRef.current = true;
+    setIsDashboardLoading(true);
+    setDashboardError(null);
+
     try {
-      setIsDashboardLoading(true);
-      setDashboardError(null);
-      console.log("🔄 [Dashboard] Carregando dados...");
+      console.log("🚀 [Dashboard] Carregando apenas Disciplinas (Atividades sob demanda)...");
 
-      const [
-        allUsers,
-        allEmpreendimentos,
-        allAtividades,
-        allPlanejamentos
-      ] = await Promise.all([
-        fetchAllRecords(Usuario, 'Usuario'),
-        fetchAllRecords(Empreendimento, 'Empreendimento'),
-        fetchAllRecords(Atividade, 'Atividade'),
-        fetchAllRecords(PlanejamentoAtividade, 'PlanejamentoAtividade')
-      ]);
+      const allDisciplinas = await retryWithBackoff(() => Disciplina.list(), 3, 4000, 'Dashboard-Disciplina');
 
-      setUsuarios(allUsers);
-      setEmpreendimentos(allEmpreendimentos);
-      setAtividades(allAtividades);
-      setPlanejamentos(allPlanejamentos);
+      setDisciplinas(allDisciplinas || []);
 
-      console.log("✅ [Dashboard] Dados carregados com sucesso");
+      if (user.role === 'admin') {
+        setStats({
+          empreendimentos: allEmpreendimentos?.length || 0,
+          disciplinas: (allDisciplinas || []).length,
+          ativos: (allEmpreendimentos || []).filter((e) => e.status === "ativo").length,
+          atividades: 0
+        });
+      }
+
+      setAreStatsLoading(false);
+      hasLoadedOnce.current = true;
+      console.log("✅ [Dashboard] Disciplinas carregadas");
 
     } catch (err) {
       console.error("❌ [Dashboard] ERRO ao carregar dados:", err);
-      setDashboardError("Erro ao carregar dados. Tente atualizar a página.");
+
+      if (err.message && (err.message.includes('Rate limit') || err.message.includes('Too Many Requests') || err.message.includes('429'))) {
+        setDashboardError("⚠️ Limite de requisições atingido. Por favor, aguarde 1 minuto antes de tentar novamente.");
+      } else {
+        setDashboardError("Erro ao carregar dados. Atualize a página em alguns segundos.");
+      }
     } finally {
       setIsDashboardLoading(false);
+      isLoadingRef.current = false;
     }
-  }, []);
+  }, [user, allEmpreendimentos]);
 
-  // Carregamento inicial dos dados
   useEffect(() => {
-    if (user && !isUserLoading) {
-      loadDashboardData();
+    if (!isLoadingPlanejamentos && allEmpreendimentos && allUsers && !hasLoadedOnce.current) {
+      const timeout = setTimeout(() => {
+        loadDashboardData();
+      }, 3000);
+
+      return () => clearTimeout(timeout);
     }
-  }, [user, isUserLoading, loadDashboardData]);
+  }, [isLoadingPlanejamentos, allEmpreendimentos, allUsers, loadDashboardData]);
 
-  if (isUserLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <LoadingSkeleton className="w-8 h-8" />
-        <span className="ml-2">Carregando usuário...</span>
-      </div>
-    );
-  }
+  const handleManualRefresh = () => {
+    hasLoadedOnce.current = false;
+    loadDashboardData();
+  };
 
-  if (!user) {
+  const loadAtividadesSeNecessario = useCallback(async () => {
+    if (atividades.length > 0) {
+      console.log('✅ Atividades já carregadas');
+      return;
+    }
+
+    console.log('🔄 Carregando atividades sob demanda...');
+    try {
+      const allAtividades = await retryWithBackoff(() => Atividade.list(), 3, 4000, 'Dashboard-Atividade-OnDemand');
+      setAtividades(allAtividades || []);
+      console.log('✅ Atividades carregadas');
+    } catch (error) {
+      console.error('❌ Erro ao carregar atividades:', error);
+      setAtividades([]);
+    }
+  }, [atividades.length]);
+
+  if (isUserLoading || (isDashboardLoading && !hasLoadedOnce.current)) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-700">Usuário não encontrado</h2>
-          <p className="text-gray-500 mt-2">Faça login para acessar o dashboard.</p>
+      <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-64" />
+            <Skeleton className="h-5 w-80" />
+          </div>
+          <Skeleton className="h-10 w-48" />
+        </div>
+        <div className="grid lg:grid-cols-3 gap-8 mt-8">
+          <div className="lg:col-span-2 space-y-8">
+            <Skeleton className="h-[120px] w-full" />
+            <Skeleton className="h-[400px] rounded-lg w-full" />
+          </div>
+          <div className="space-y-8">
+            <Skeleton className="h-[150px] rounded-lg w-full" />
+            <Skeleton className="h-[150px] rounded-lg w-full" />
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header Principal */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="p-6 md:p-8 space-y-8">
+        <div className="max-w-full mx-auto 2xl:max-w-screen-2xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Painel de Controle
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Gerencie seus projetos de forma eficiente.
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Painel de Controle</h1>
+              <p className="text-gray-600">
+                {isColaboradorView ?
+                  `Bem-vindo, ${user.full_name || user.email}. Veja suas atividades.` :
+                  "Gerencie seus projetos de forma eficiente."
+                }
               </p>
+              {dashboardError &&
+                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-700 text-sm font-medium">{dashboardError}</p>
+                  <Button onClick={handleManualRefresh} size="sm" className="mt-2 bg-red-600 hover:bg-red-700">
+                    Tentar Novamente
+                  </Button>
+                </div>
+              }
             </div>
-
-            <div className="flex items-center gap-4">
-              <SimpleButton
-                onClick={() => navigate('/planejamento')}
-                variant="dark"
-                className="flex items-center gap-2"
+            {canCreatePlanning &&
+              <Button
+                onClick={async () => {
+                  await loadAtividadesSeNecessario();
+                  setShowNovoPlanejamentoModal(true);
+                }}
+                className="bg-zinc-950 text-slate-50 px-4 py-2 text-sm font-medium inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 h-10 hover:bg-purple-700 shadow-lg"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4 mr-2" />
                 Novo Planejamento
-              </SimpleButton>
+              </Button>
+            }
+          </div>
+
+          <AlertaAtrasosEntrega
+            user={user}
+            isColaboradorView={isColaboradorView}
+            usuarios={allUsers}
+          />
+
+          <div className="flex justify-center mb-4">
+            <div className="bg-white rounded-lg p-1 shadow-sm border">
+              <Button variant={isColaboradorView || viewMode === 'calendar' ? 'default' : 'ghost'} onClick={() => setViewMode('calendar')} className="px-4 py-2" disabled={isColaboradorView}>
+                <Calendar className="w-4 h-4 mr-2" />Calendário
+              </Button>
+              <Button variant={viewMode === 'curva-s' && !isColaboradorView ? 'default' : 'ghost'} onClick={() => setViewMode('curva-s')} className="px-4 py-2" disabled={isColaboradorView}>
+                <TrendingUp className="w-4 h-4 mr-2" />Curva S
+              </Button>
+              <Button variant={viewMode === 'alocacao' && !isColaboradorView ? 'default' : 'ghost'} onClick={() => setViewMode('alocacao')} className="px-4 py-2" disabled={isColaboradorView}>
+                <UsersRound className="w-4 h-4 mr-2" />Alocação Equipe
+              </Button>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            {(isColaboradorView || viewMode === 'calendar') && (
+              <CalendarioPlanejamento
+                isDashboardRefreshing={isDashboardLoading}
+                usuarios={allUsers}
+                disciplinas={disciplinas}
+                onRefresh={handleManualRefresh}
+              />
+            )}
+
+            {viewMode === 'curva-s' && !isColaboradorView && (
+              <CurvaSPlanejamento
+                isLoading={isDashboardLoading}
+                onRefresh={handleManualRefresh}
+                isRefreshing={isDashboardLoading}
+                usuarios={allUsers}
+              />
+            )}
+
+            {viewMode === 'alocacao' && !isColaboradorView && (
+              <AlocacaoEquipeTab
+                usuarios={allUsers}
+              />
+            )}
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
+              <MemoizedExecucoesPorUsuario />
+            </div>
+            <div className="space-y-8">
+              <QuickActions
+                atividadesGenericas={atividadesGenericas}
+                usuarios={allUsers}
+                empreendimentos={allEmpreendimentos}
+                isLoading={isLoadingPlanejamentos}
+              />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Navegação com Botões */}
-      <div className="bg-white border-b">
-        <div className="px-6 py-3">
-          <div className="flex items-center gap-4">
-            <SimpleButton
-              variant="dark"
-              className="flex items-center gap-2"
-            >
-              <CalendarIcon className="w-4 h-4" />
-              Calendário
-            </SimpleButton>
-            <SimpleButton
-              variant="secondary"
-              className="flex items-center gap-2"
-              onClick={() => navigate('/planejamento')}
-            >
-              <TrendingUp className="w-4 h-4" />
-              Curva S
-            </SimpleButton>
-          </div>
-        </div>
-      </div>
-
-      {/* Error State */}
-      {dashboardError && (
-        <div className="px-6 pt-4">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-            {dashboardError}
-          </div>
-        </div>
+      {showNovoPlanejamentoModal && (
+        <NovoPlanejamentoModal
+          isOpen={showNovoPlanejamentoModal}
+          onClose={() => setShowNovoPlanejamentoModal(false)}
+          empreendimentos={allEmpreendimentos}
+          usuarios={allUsers}
+          atividades={atividades}
+          onSuccess={() => {
+            setShowNovoPlanejamentoModal(false);
+            handleManualRefresh();
+          }}
+        />
       )}
-
-      {/* Conteúdo Principal */}
-      <div className="px-4 py-4">
-        {isDashboardLoading ? (
-          <div className="space-y-6">
-            <LoadingSkeleton className="h-96" />
-          </div>
-        ) : (
-          <CalendarComponent
-            currentDate={currentDate}
-            setCurrentDate={setCurrentDate}
-          />
-        )}
-
-        {/* Informações de Status no Footer */}
-        {!isDashboardLoading && (
-          <div className="mt-4 grid grid-cols-4 gap-4">
-            <SimpleCard>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">
-                  {empreendimentos.length}
-                </div>
-                <div className="text-sm text-gray-600">Empreendimentos</div>
-              </div>
-            </SimpleCard>
-            <SimpleCard>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {usuarios.length}
-                </div>
-                <div className="text-sm text-gray-600">Usuários</div>
-              </div>
-            </SimpleCard>
-            <SimpleCard>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">
-                  {atividades.length}
-                </div>
-                <div className="text-sm text-gray-600">Atividades</div>
-              </div>
-            </SimpleCard>
-            <SimpleCard>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">
-                  {planejamentos.length}
-                </div>
-                <div className="text-sm text-gray-600">Planejamentos</div>
-              </div>
-            </SimpleCard>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

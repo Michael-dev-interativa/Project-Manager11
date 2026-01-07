@@ -9,15 +9,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChevronLeft, ChevronRight, Users, RefreshCw, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { format, addDays, startOfWeek, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
-
 import { PlanejamentoAtividade, Empreendimento, Documento, Usuario } from "@/entities/all";
 import { retryWithBackoff } from "../utils/apiUtils";
+
+// Entidade AlocacaoEquipe para integração com backend
+class AlocacaoEquipeEntity {
+  async list(params = {}) {
+    let endpoint = 'http://localhost:3001/api/AlocacaoEquipe';
+    if (Object.keys(params).length > 0) {
+      const searchParams = new URLSearchParams(params);
+      endpoint += `?${searchParams.toString()}`;
+    }
+    return await fetch(endpoint).then(r => r.json());
+  }
+  async create(data) {
+    return await fetch('http://localhost:3001/api/AlocacaoEquipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json());
+  }
+  async update(id, data) {
+    return await fetch(`http://localhost:3001/api/AlocacaoEquipe/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json());
+  }
+  async delete(id) {
+    return await fetch(`http://localhost:3001/api/AlocacaoEquipe/${id}`, { method: 'DELETE' }).then(r => r.json());
+  }
+}
+const AlocacaoEquipe = new AlocacaoEquipeEntity();
 
 // Entidade Equipe local (caso não exista no backend)
 class EquipeEntity {
   async list(params = {}) {
-    let endpoint = '/Equipe';
+    let endpoint = 'http://localhost:3001/api/Equipe';
     if (Object.keys(params).length > 0) {
       const searchParams = new URLSearchParams(params);
       endpoint += `?${searchParams.toString()}`;
@@ -25,24 +53,28 @@ class EquipeEntity {
     return await fetch(endpoint).then(r => r.json());
   }
   async get(id) {
-    return await fetch(`/Equipe/${id}`).then(r => r.json());
+    return await fetch(`http://localhost:3001/api/Equipe/${id}`).then(r => r.json());
   }
   async create(data) {
-    return await fetch('/Equipe', {
+    return await fetch('http://localhost:3001/api/Equipe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => r.json());
   }
   async update(id, data) {
-    return await fetch(`/Equipe/${id}`, {
+    return await fetch(`http://localhost:3001/api/Equipe/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => r.json());
   }
   async delete(id) {
-    return await fetch(`/Equipe/${id}`, { method: 'DELETE' }).then(r => r.json());
+    return await fetch(`http://localhost:3001/api/Equipe/${id}`, { method: 'DELETE' })
+      .then(r => {
+        if (r.status === 204) return true;
+        try { return r.json(); } catch { return true; }
+      });
   }
 }
 const Equipe = new EquipeEntity();
@@ -70,6 +102,7 @@ export default function AlocacaoEquipeTab({
   documentos: documentosProp,
   equipes: equipesProp
 }) {
+  const [alocacoesLocal, setAlocacoesLocal] = useState([]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [planejamentosLocal, setPlanejamentosLocal] = useState([]);
   const [empreendimentosLocal, setEmpreendimentosLocal] = useState([]);
@@ -110,13 +143,15 @@ export default function AlocacaoEquipeTab({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [plans, emps, docs, teams, users] = await Promise.all([
+      const [alocacoes, plans, emps, docs, teams, users] = await Promise.all([
+        retryWithBackoff(() => AlocacaoEquipe.list(), 3, 2000, 'AlocacaoEquipe-List'),
         retryWithBackoff(() => PlanejamentoAtividade.list(), 3, 2000, 'AlocacaoEquipe-Planejamentos'),
         retryWithBackoff(() => Empreendimento.list(), 3, 2000, 'AlocacaoEquipe-Empreendimentos'),
         retryWithBackoff(() => Documento.list(), 3, 2000, 'AlocacaoEquipe-Documentos'),
         retryWithBackoff(() => Equipe.list(), 3, 2000, 'AlocacaoEquipe-Equipes'),
         retryWithBackoff(() => Usuario.list(), 3, 2000, 'AlocacaoEquipe-Usuarios')
       ]);
+      setAlocacoesLocal(alocacoes);
 
       setPlanejamentosLocal(plans || []);
       setEmpreendimentosLocal(emps || []);
@@ -551,7 +586,7 @@ export default function AlocacaoEquipeTab({
 
       {/* Modal de Gerenciamento de Equipes e Usuários */}
       <Dialog open={showEquipeModal} onOpenChange={setShowEquipeModal}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-lg w-full bg-white rounded-xl shadow-xl flex flex-col items-center justify-center p-8" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)', position: 'fixed' }}>
           <DialogHeader>
             <DialogTitle>Gerenciar Equipes e Membros</DialogTitle>
           </DialogHeader>
@@ -570,6 +605,38 @@ export default function AlocacaoEquipeTab({
             </Button>
           </div>
 
+
+          {/* Formulário de edição/criação de equipe */}
+          {showEquipeForm && (
+            <form onSubmit={handleSaveEquipe} className="flex flex-col gap-3 w-full mb-4">
+              <div className="flex gap-2 items-center">
+                <Input
+                  placeholder="Nome da equipe"
+                  value={equipeFormData.nome}
+                  onChange={e => setEquipeFormData(f => ({ ...f, nome: e.target.value }))}
+                  required
+                  className="flex-1"
+                />
+                <input
+                  type="color"
+                  value={equipeFormData.cor}
+                  onChange={e => setEquipeFormData(f => ({ ...f, cor: e.target.value }))}
+                  title="Cor da equipe"
+                  style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer' }}
+                />
+              </div>
+              <Input
+                placeholder="Descrição (opcional)"
+                value={equipeFormData.descricao}
+                onChange={e => setEquipeFormData(f => ({ ...f, descricao: e.target.value }))}
+              />
+              <div className="flex gap-2 justify-end">
+                <Button type="button" variant="outline" onClick={() => { setShowEquipeForm(false); setEditingEquipe(null); }}>Cancelar</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="animate-spin w-4 h-4" /> : 'Salvar'}</Button>
+              </div>
+            </form>
+          )}
+
           {/* Lista de equipes existentes */}
           <div className="flex flex-wrap gap-2 mb-4">
             {equipes.map(eq => (
@@ -578,6 +645,9 @@ export default function AlocacaoEquipeTab({
                 <span className="text-sm">{eq.nome}</span>
                 <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-500" onClick={() => handleDeleteEquipe(eq)}>
                   <Trash2 className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-blue-500" onClick={() => handleEditEquipe(eq)}>
+                  <Pencil className="w-3 h-3" />
                 </Button>
               </div>
             ))}

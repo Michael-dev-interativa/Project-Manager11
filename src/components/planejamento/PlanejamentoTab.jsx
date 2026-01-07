@@ -60,14 +60,50 @@ export default function PlanejamentoTab({ empreendimentoId }) {
   const enrichPlanejamentos = useCallback(async () => {
     try {
       setIsLoading(true);
-      // Busca planejamentos de documentos do backend (usando filter para compatibilidade)
-      const planejamentosDoc = await PlanejamentoDocumento.filter({ empreendimento_id: empreendimentoId });
+      // Busca planejamentos de documentos e atividades do backend
+      const [planejamentosDoc, planejamentosAtv] = await Promise.all([
+        PlanejamentoDocumento.filter({ empreendimento_id: empreendimentoId }),
+        PlanejamentoAtividade.filter({ empreendimento_id: empreendimentoId })
+      ]);
       setPlanejamentosRaw(planejamentosDoc);
 
+      // Carregar todos os usuários e criar mapas para resolver nomes
+      let allUsuarios = [];
+      try {
+        allUsuarios = await Usuario.list();
+      } catch { }
+      const userById = (allUsuarios || []).reduce((acc, u) => { acc[String(u.id)] = u; return acc; }, {});
+      const userByEmail = (allUsuarios || []).reduce((acc, u) => { if (u.email) acc[String(u.email).toLowerCase()] = u; return acc; }, {});
+      const userByNome = (allUsuarios || []).reduce((acc, u) => { if (u.nome) acc[String(u.nome).toLowerCase()] = u; return acc; }, {});
+      const resolveExecutor = (plano) => {
+        let key = plano?.executor_principal;
+        if (!key && Array.isArray(plano?.executores) && plano.executores.length > 0) {
+          key = plano.executores[0];
+        }
+        if (key == null) return null;
+        const k = String(key).trim();
+        if (userById[k]) return userById[k];
+        if (k.includes('@') && userByEmail[k.toLowerCase()]) return userByEmail[k.toLowerCase()];
+        return userByNome[k.toLowerCase()] || null;
+      };
+
       // Enriquecer cada planejamento com dados úteis para exibição
-      const documentosIds = [...new Set(planejamentosDoc.map(p => p.documento_id).filter(Boolean))];
+      const documentosIdsDoc = [...new Set(planejamentosDoc.map(p => p.documento_id).filter(Boolean))];
+      const atividadeIdsAtv = [...new Set(planejamentosAtv.map(p => p.atividade_id).filter(Boolean))];
+      let atividadesMap = {};
       let documentosMap = {};
       let tempoExecutadoPorDocumento = {};
+      // Buscar atividades para os planejamentos de atividade
+      if (atividadeIdsAtv.length > 0) {
+        try {
+          const atividades = await Atividade.filter({ id: { $in: atividadeIdsAtv } });
+          atividadesMap = (atividades || []).reduce((acc, a) => { acc[a.id] = a; return acc; }, {});
+        } catch { }
+      }
+      const documentosIds = [...new Set([
+        ...documentosIdsDoc,
+        ...Object.values(atividadesMap).map(a => a.documento_id).filter(Boolean)
+      ])];
       if (documentosIds.length > 0) {
         try {
           const documentos = await Documento.filter({ id: { $in: documentosIds } });
@@ -85,16 +121,9 @@ export default function PlanejamentoTab({ empreendimentoId }) {
           }, {});
         } catch { }
       }
-      const enriched = await Promise.all(
+      const enrichedDocs = await Promise.all(
         planejamentosDoc.map(async (plano) => {
-          // Buscar executor principal (objeto)
-          let executorPrincipalObj = null;
-          if (plano.executor_principal) {
-            try {
-              const usuarios = await Usuario.list();
-              executorPrincipalObj = usuarios.find(u => u.email === plano.executor_principal);
-            } catch { }
-          }
+          const executorPrincipalObj = resolveExecutor(plano);
           // Garantir horas_por_dia como objeto
           let horasPorDia = plano.horas_por_dia;
           if (typeof horasPorDia === 'string') {
@@ -106,17 +135,16 @@ export default function PlanejamentoTab({ empreendimentoId }) {
             try { subdisciplinas = JSON.parse(subdisciplinas); } catch { subdisciplinas = subdisciplinas.split(',').map(s => ({ nome: s.trim() })); }
           }
           if (!Array.isArray(subdisciplinas)) subdisciplinas = [];
+          const doc = documentosMap[plano.documento_id] || {};
           return {
             ...plano,
             tipo_planejamento: 'documento',
             executorPrincipalObj,
-            // Preferir sempre o valor do banco: tempo_executado
-            // fallback para campos alternativos caso o backend não envie
+            executor_principal_nome: executorPrincipalObj?.nome || null,
+            documentoNumero: doc.numero_completo || doc.numero || doc.codigo || "",
+            documentoArquivo: doc.nome || doc.arquivo || doc.titulo || "",
+
             tempoExecutado: (() => {
-              // 1) Preferir tempo_executado da tabela Atividade, se for um planejamento de atividade (quando disponível)
-              // 2) Para planejamento de documento, preferir documento.tempo_executado
-              // 3) Depois, usar plano.tempo_executado
-              // 4) Fallback para plano.tempoExecutado
               let v = null;
               // Se vier atividade vinculada neste plano (em cenários mistos), usar atividade.tempo_executado
               if (plano.atividade && plano.atividade.tempo_executado != null) {
@@ -151,6 +179,35 @@ export default function PlanejamentoTab({ empreendimentoId }) {
           };
         })
       );
+
+      // Enriquecer planejamentos de atividade (individual)
+      const enrichedAtividades = await Promise.all(
+        planejamentosAtv.map(async (plano) => {
+          const executorPrincipalObj = resolveExecutor(plano);
+          // Atividade e documento relacionados
+          const atividade = atividadesMap[plano.atividade_id] || null;
+          const doc = atividade ? (documentosMap[atividade.documento_id] || {}) : {};
+          // horas_por_dia normalizado
+          let horasPorDia = plano.horas_por_dia;
+          if (typeof horasPorDia === 'string') {
+            try { horasPorDia = JSON.parse(horasPorDia); } catch { horasPorDia = {}; }
+          }
+          return {
+            ...plano,
+            tipo_planejamento: 'atividade',
+            atividade: atividade?.atividade || plano.descritivo || 'Atividade',
+            executores: Array.isArray(plano.executores) ? plano.executores : [plano.executor_principal].filter(Boolean),
+            executorPrincipalObj,
+            executor_principal_nome: executorPrincipalObj?.nome || null,
+            documentoNumero: doc.numero_completo || doc.numero || doc.codigo || "",
+            documentoArquivo: doc.nome || doc.arquivo || doc.titulo || "",
+            horas_por_dia: horasPorDia,
+            tempoExecutado: Number(plano.tempo_executado || 0),
+          };
+        })
+      );
+
+      const enriched = [...enrichedDocs, ...enrichedAtividades];
       setEnrichedPlanejamentos(enriched);
     } catch (err) {
       setPlanejamentosRaw([]);
@@ -169,6 +226,11 @@ export default function PlanejamentoTab({ empreendimentoId }) {
       map[docId].push(plano);
     }
     return map;
+  }, [filteredPlanejamentos]);
+
+  // Apenas atividades (itens individuais) após aplicar filtros
+  const atividadesFiltradas = useMemo(() => {
+    return (filteredPlanejamentos || []).filter(p => p.tipo_planejamento === 'atividade');
   }, [filteredPlanejamentos]);
 
   // Função de filtro para planejamentos
@@ -207,10 +269,14 @@ export default function PlanejamentoTab({ empreendimentoId }) {
     setSelectedIds(new Set());
   }, [applyFilters]);
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (plano) => {
     if (window.confirm("Tem certeza que deseja excluir este planejamento?")) {
       try {
-        await PlanejamentoDocumento.delete(id);
+        if (plano.tipo_planejamento === 'atividade') {
+          await PlanejamentoAtividade.delete(plano.id);
+        } else {
+          await PlanejamentoDocumento.delete(plano.id);
+        }
         enrichPlanejamentos();
       } catch (error) {
         console.error("Erro ao excluir planejamento:", error);
@@ -357,7 +423,7 @@ export default function PlanejamentoTab({ empreendimentoId }) {
         if (setModalExecucao) {
           const atividade = { ...plano, tipo: 'atividade' };
           setModalExecucao(atividade);
-          return; // não atualiza status diretamente
+          return;
         }
       }
 
@@ -380,13 +446,10 @@ export default function PlanejamentoTab({ empreendimentoId }) {
     }
   };
 
-  // Placeholder for handlePlanActivity - This function would typically open the modal
-  // by setting `planejandoAtividade` to the activity object to be planned.
+
   const handlePlanActivity = useCallback((analiticoObj) => {
     setPlanningError(null); // Clear previous errors
-    // analiticoObj should contain at least analitico_id, possibly other default data
-    // to pre-fill the modal or identify the activity being planned.
-    // This is a placeholder; real logic depends on where this function is called from.
+
     setPlanejandoAtividade(analiticoObj);
   }, []);
 
@@ -543,7 +606,7 @@ export default function PlanejamentoTab({ empreendimentoId }) {
   // Layout agrupado: Pasta > Folha > Subdisciplinas
   function renderPlanejamentoAgrupado() {
     // Exibir apenas planejamentos agrupados por documento
-    const planejamentosDocumento = filteredPlanejamentos.filter(p => p.tipo === 'documento');
+    const planejamentosDocumento = filteredPlanejamentos.filter(p => (p.tipo === 'documento') || (p.tipo_planejamento === 'documento'));
     return (
       <div className="bg-[#f6f8fa] rounded-xl border border-blue-200 p-4">
         <div className="flex items-center gap-2 mb-4">
@@ -566,8 +629,8 @@ export default function PlanejamentoTab({ empreendimentoId }) {
                 <Badge className={`${statusColors[plano.status]} text-xs`}>{statusLabels[plano.status]}</Badge>
                 <span className="text-xs text-gray-500">{plano.etapa}</span>
                 <span className="text-xs text-gray-500 font-bold">{plano.tempo_planejado}h planejadas</span>
-                <span className="text-xs text-gray-500">{plano.executorPrincipalObj?.nome || (Array.isArray(plano.executores) ? plano.executores[0] : plano.executores)}</span>
-                <Button size="xs" variant="ghost" onClick={() => handleDelete(plano.id)} className="text-red-600 hover:bg-red-50 ml-auto">
+                <span className="text-xs text-gray-500">{plano.executorPrincipalObj?.nome || plano.executor_principal_nome || (Array.isArray(plano.executores) ? plano.executores[0] : plano.executores) || plano.executor_principal || ''}</span>
+                <Button size="xs" variant="ghost" onClick={() => handleDelete(plano)} className="text-red-600 hover:bg-red-50 ml-auto">
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
@@ -633,21 +696,11 @@ export default function PlanejamentoTab({ empreendimentoId }) {
               </Button>
             )}
 
-            {/* Example of adding a button to trigger the planning modal for an existing activity (e.g. to modify it)
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handlePlanActivity(plano)} // You would pass the existing plan data to edit
-                className="text-gray-600 hover:bg-gray-50"
-              >
-                <Edit className="w-4 h-4" />
-              </Button>
-              */}
 
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => handleDelete(plano.id)}
+              onClick={() => handleDelete(plano)}
               className="text-red-600 hover:bg-red-50"
             >
               <Trash2 className="w-4 h-4" />
@@ -682,9 +735,31 @@ export default function PlanejamentoTab({ empreendimentoId }) {
           <div className="flex items-center gap-1.5">
             <User className="w-4 h-4 text-gray-500" />
             <span>
-              {plano.executorPrincipalObj?.nome || plano.executor_principal}
+              {plano.executorPrincipalObj?.nome || plano.executor_principal_nome || plano.executor_principal || (Array.isArray(plano.executores) ? plano.executores[0] : '')}
             </span>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render principal da aba
+  return (
+    <div className="space-y-8">
+      {renderPlanejamentoAgrupado()}
+
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Calendar className="w-5 h-5 text-gray-700" />
+          <span className="font-semibold text-gray-900">Atividades Planejadas</span>
+          <span className="text-xs text-gray-500">({atividadesFiltradas.length})</span>
+        </div>
+        <div className="space-y-3">
+          {atividadesFiltradas.length === 0 ? (
+            <div className="text-sm text-gray-500">Nenhuma atividade planejada encontrada para os filtros atuais.</div>
+          ) : (
+            atividadesFiltradas.map(renderPlanejamentoCard)
+          )}
         </div>
       </div>
     </div>

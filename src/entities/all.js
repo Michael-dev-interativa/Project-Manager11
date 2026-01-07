@@ -1,4 +1,44 @@
 // ✅ ENTIDADE ATA DE REUNIÃO (CRUD)
+// ✅ ENTIDADE DATACADASTRO (CRUD)
+class DataCadastroEntity {
+  constructor(endpoint) {
+    this.endpoint = endpoint;
+  }
+
+  async list(params = {}) {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    const url = query ? `/${this.endpoint}?${query}` : `/${this.endpoint}`;
+    return await apiRequest(url);
+  }
+
+  async filter(params = {}) {
+    return this.list(params);
+  }
+
+  async create(data) {
+    return await apiRequest(`/${this.endpoint}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async update(id, data) {
+    return await apiRequest(`/${this.endpoint}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async delete(id) {
+    return await apiRequest(`/${this.endpoint}/${id}`, {
+      method: 'DELETE'
+    });
+  }
+}
+
+export const DataCadastro = new DataCadastroEntity('datacadastro');
 class AtaReuniaoEntity {
   constructor(endpoint) {
     this.endpoint = endpoint;
@@ -48,7 +88,7 @@ const logger = {
 const API_BASE_URL = 'http://localhost:3001/api';
 
 // Função auxiliar para requisições
-const apiRequest = async (endpoint, options = {}) => {
+export const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   const config = {
     headers: {
@@ -291,74 +331,7 @@ const mockData = {
 };
 
 // ✅ CLASSE GENÉRICA PARA ENTIDADES
-class EntityBase {
-  constructor(name, mockItems = []) {
-    this.name = name;
-    this.mockData = mockItems;
-  }
-
-  async list(params = {}) {
-    let endpoint = `/${this.name}`;
-    if (Object.keys(params).length > 0) {
-      const searchParams = new URLSearchParams(params);
-      endpoint += `?${searchParams.toString()}`;
-    }
-    return await apiRequest(endpoint, { method: 'GET' });
-  }
-
-  async get(id) {
-    return await apiRequest(`/${this.name}/${id}`);
-  }
-
-  async create(data) {
-    // Só adiciona 'cor' se a entidade for Disciplina, Atividade ou outra que use esse campo
-    const payload = { ...data };
-    if ((this.name === 'Disciplina' || this.name === 'Atividades' || this.name === 'Atividade') && !('cor' in payload)) {
-      payload.cor = null;
-    }
-    // Forçar tipo correto para Execucao
-    if (this.name === 'Execucao') {
-      if (payload.planejamento_id) payload.planejamento_id = parseInt(payload.planejamento_id);
-      if (payload.atividade_nome === undefined && payload.atividade) payload.atividade_nome = payload.atividade;
-      console.log('Payload enviado para backend Execucao:', payload);
-    }
-    return await apiRequest(`/${this.name}`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  async update(id, data) {
-    // Garante que o campo 'cor' sempre seja enviado (mesmo se undefined)
-    const payload = { ...data };
-    if (!('cor' in payload)) payload.cor = null;
-    // Rota genérica correta: /<Entidade>/:id
-    // Ex.: Atividade -> /Atividades/:id, Usuario -> /Usuario/:id
-    console.log(`[${this.name}.update] PUT`, id, payload);
-    return await apiRequest(`/${this.name}/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  async delete(id) {
-    return await apiRequest(`/${this.name}/${id}`, { method: 'DELETE' });
-  }
-
-  async filter(params = {}) {
-    return this.list(params);
-  }
-
-  // ✅ MÉTODOS ESPECIAIS PARA DASHBOARD
-  async summary() {
-    return await apiRequest(`/${this.name}/summary`);
-  }
-
-  async count(params = {}) {
-    const items = await this.list(params);
-    return items.length;
-  }
-}
+import { EntityBase } from "./EntityBase";
 
 // ✅ ENTIDADE USUÁRIO COM MÉTODOS ESPECIAIS
 export const Usuario = {
@@ -895,8 +868,15 @@ export const loadDashboardData = async () => {
   }
 };
 
+
 // ✅ CLASSE GENÉRICA PARA COMPATIBILIDADE
 export class Entity extends EntityBase { }
+
+// ✅ EXPORTAÇÃO DO EntityBase para uso em outras entidades
+export { EntityBase };
+
+// ✅ EXPORTAÇÃO DO ItemPRE
+export { ItemPRE } from "./ItemPRE";
 
 // ✅ EXPORTAR TUDO
 const entities = {

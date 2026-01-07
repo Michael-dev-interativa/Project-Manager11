@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +14,42 @@ import { retryWithBackoff } from "@/components/utils/apiUtils";
 
 
 export default function AtaPlanejamento() {
+  // Adiciona um campo de providência em uma linha
+  const handleAddCampoProvidencia = (linhaIdx) => {
+    setNovaProvidencia(prev => {
+      const novasLinhas = prev.linhas.map((linha, idx) =>
+        idx === linhaIdx
+          ? { ...linha, providencias: [...linha.providencias, ''] }
+          : linha
+      );
+      return { ...prev, linhas: novasLinhas };
+    });
+  };
+
+  // Remove um campo de providência de uma linha
+  const handleRemoveCampoProvidencia = (linhaIdx, campoIdx) => {
+    setNovaProvidencia(prev => {
+      const novasLinhas = prev.linhas.map((linha, idx) => {
+        if (idx !== linhaIdx) return linha;
+        const novasProvidencias = linha.providencias.filter((_, i) => i !== campoIdx);
+        return { ...linha, providencias: novasProvidencias };
+      });
+      return { ...prev, linhas: novasLinhas };
+    });
+  };
+
+  // Atualiza o valor de um campo de providência em uma linha
+  const handleUpdateCampoProvidencia = (linhaIdx, campoIdx, value) => {
+    setNovaProvidencia(prev => {
+      const novasLinhas = prev.linhas.map((linha, idx) => {
+        if (idx !== linhaIdx) return linha;
+        const arr = Array.isArray(linha.providencias) ? linha.providencias : [linha.providencias || ''];
+        const novasProvidencias = arr.map((prov, i) => i === campoIdx ? value : prov);
+        return { ...linha, providencias: novasProvidencias };
+      });
+      return { ...prev, linhas: novasLinhas };
+    });
+  };
   // Estados principais
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -263,7 +298,14 @@ export default function AtaPlanejamento() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [novaProvidencia, setNovaProvidencia] = useState({
     projeto: '',
-    linhas: [{ providencias: '', gerencia: '', responsaveis: [], dataReuniao: '', dataRetorno: '', status: 'pendente' }]
+    linhas: [{
+      providencias: [''],
+      gerencia: '',
+      responsaveis: [],
+      dataReuniao: '',
+      dataRetorno: '',
+      status: 'pendente'
+    }]
   });
   const [showSelectAtaModal, setShowSelectAtaModal] = useState(false);
   const [searchAta, setSearchAta] = useState('');
@@ -315,11 +357,14 @@ export default function AtaPlanejamento() {
         setCurrentAtaId(newAta.id);
       }
 
-      await loadData();
-      alert('ATA salva com sucesso!');
+      // Só recarrega e alerta se for chamado manualmente
+      if (window.__manualSaveAta) {
+        await loadData();
+        alert('ATA salva com sucesso!');
+      }
     } catch (error) {
       console.error('Erro ao salvar ATA:', error);
-      alert('Erro ao salvar ATA. Tente novamente.');
+      if (window.__manualSaveAta) alert('Erro ao salvar ATA. Tente novamente.');
     } finally {
       setIsSaving(false);
     }
@@ -411,13 +456,13 @@ export default function AtaPlanejamento() {
   };
 
   const handleAddProvidencia = () => {
-    const linhasValidas = novaProvidencia.linhas.filter(l => l.providencias.trim());
+    const linhasValidas = novaProvidencia.linhas.filter(l => Array.isArray(l.providencias) && l.providencias.some(p => p && p.trim()));
     if (linhasValidas.length === 0) return;
 
-    const novasProvidencias = linhasValidas.map((linha, idx) => ({
-      id: Date.now() + idx,
+    const novasProvidencias = linhasValidas.map((linha, idxLinha) => ({
+      id: Date.now() + idxLinha * 100,
       projeto: novaProvidencia.projeto,
-      providencias: linha.providencias,
+      providencias: (Array.isArray(linha.providencias) ? linha.providencias : [linha.providencias]).filter(p => p && p.trim()),
       gerencia: linha.gerencia,
       responsaveis: linha.responsaveis,
       dataReuniao: linha.dataReuniao,
@@ -425,10 +470,33 @@ export default function AtaPlanejamento() {
       status: linha.status
     }));
 
-    setProvidencias(prev => [...prev, ...novasProvidencias]);
+    setProvidencias(prev => {
+      const atualizadas = [...prev, ...novasProvidencias];
+      // Autosave após adicionar
+      setTimeout(() => {
+        if (typeof handleSaveAta === 'function') {
+          // Indica que não é manual
+          window.__manualSaveAta = false;
+          handleSaveAta();
+        }
+      }, 0);
+      return atualizadas;
+    });
+    // Função para salvar manualmente (com recarregar e alert)
+    const handleManualSaveAta = () => {
+      window.__manualSaveAta = true;
+      handleSaveAta();
+    };
     setNovaProvidencia({
       projeto: '',
-      linhas: [{ providencias: '', gerencia: '', responsaveis: [], dataReuniao: '', dataRetorno: '', status: 'pendente' }]
+      linhas: [{
+        providencias: [''],
+        gerencia: '',
+        responsaveis: [],
+        dataReuniao: '',
+        dataRetorno: '',
+        status: 'pendente'
+      }]
     });
     setShowAddModal(false);
   };
@@ -1004,16 +1072,26 @@ export default function AtaPlanejamento() {
                       </Button>
                     )}
                   </div>
-
-                  <div>
-                    <Textarea
-                      value={linha.providencias}
-                      onChange={(e) => handleUpdateLinha(idx, 'providencias', e.target.value)}
-                      placeholder="Descreva a providência..."
-                      rows={2}
-                    />
+                  <div className="space-y-2">
+                    {(Array.isArray(linha.providencias) ? linha.providencias : []).map((prov, pIdx) => (
+                      <div key={pIdx} className="flex gap-2 items-center">
+                        <Textarea
+                          value={prov}
+                          onChange={e => handleUpdateCampoProvidencia(idx, pIdx, e.target.value)}
+                          placeholder={`Providência ${pIdx + 1}`}
+                          rows={2}
+                        />
+                        {linha.providencias.length > 1 && (
+                          <Button type="button" size="icon" variant="ghost" className="text-red-500" onClick={() => handleRemoveCampoProvidencia(idx, pIdx)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button type="button" size="sm" variant="outline" className="mt-1" onClick={() => handleAddCampoProvidencia(idx)}>
+                      <Plus className="w-3 h-3 mr-1" /> Adicionar campo de Providência
+                    </Button>
                   </div>
-
                   <div className="grid grid-cols-5 gap-3">
                     <div>
                       <label className="text-xs text-gray-500">Gerência</label>
@@ -1082,12 +1160,12 @@ export default function AtaPlanejamento() {
 
             <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
               <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancelar</Button>
-              <Button onClick={handleAddProvidencia}>Adicionar {novaProvidencia.linhas.filter(l => l.providencias.trim()).length} Providência(s)</Button>
+              <Button onClick={handleAddProvidencia}>Adicionar {novaProvidencia.linhas.filter(l => Array.isArray(l.providencias) && l.providencias.some(p => p && p.trim())).length} Providência(s)</Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
     </>
   );
-}
 
+}

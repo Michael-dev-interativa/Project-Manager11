@@ -241,140 +241,142 @@ export default function DocumentoForm({
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span>{doc ? 'Editar Documento' : 'Novo Documento'}</span>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </Button>
-          </DialogTitle>
-        </DialogHeader>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1000 }}>
+        <DialogContent className="dialog-content">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{doc ? 'Editar Documento' : 'Novo Documento'}</span>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-4 h-4" />
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="numero">Número do Documento *</Label>
-              <Input id="numero" value={formData.numero} onChange={(e) => setFormData({ ...formData, numero: e.target.value })} className={errors.numero ? 'border-red-500' : ''} placeholder="Ex: ARQ-01" required />
-              {errors.numero && <p className="text-red-500 text-sm mt-1">{errors.numero}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="arquivo">Nome do Arquivo *</Label>
-              <Input id="arquivo" value={formData.arquivo} onChange={(e) => setFormData({ ...formData, arquivo: e.target.value })} className={errors.arquivo ? 'border-red-500' : ''} placeholder="Ex: Planta Baixa Térreo" required />
-              {errors.arquivo && <p className="text-red-500 text-sm mt-1">{errors.arquivo}</p>}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="descritivo">Descritivo</Label>
-            <Input id="descritivo" value={formData.descritivo} onChange={(e) => setFormData({ ...formData, descritivo: e.target.value })} placeholder="Ex: Planta baixa do pavimento térreo com layout de móveis" />
-            <p className="text-xs text-gray-500">Descrição detalhada do documento (opcional)</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="pavimento_id">Pavimento (para cálculo de área)
-                {formData.pavimento_id && pavimentos && pavimentos.length > 0 && (
-                  <span className="text-xs text-blue-600 ml-2">({pavimentos.find(p => p.id === formData.pavimento_id)?.area || 0} m²)</span>
-                )}
-              </Label>
-              <Select value={formData.pavimento_id || ''} onValueChange={(value) => setFormData({ ...formData, pavimento_id: value || null })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o pavimento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={null}>Sem pavimento (usar horas padrão)</SelectItem>
-                  {pavimentos && pavimentos.length > 0 ? (
-                    pavimentos.map(pav => (
-                      <SelectItem key={pav.id} value={pav.id}>
-                        {pav.nome} - {Number(pav.area).toFixed(0)}m²
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="nenhum" disabled>Nenhum pavimento cadastrado</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500 mt-1">
-                {formData.pavimento_id ? "A área do pavimento será usada para calcular o tempo das atividades (tempo/m² × área)" : "Sem pavimento, será usado o tempo padrão das atividades (sem multiplicar pela área)"}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="disciplina">Disciplina *</Label>
-              <Select value={formData.disciplina} onValueChange={(value) => setFormData({ ...formData, disciplina: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a disciplina" />
-                </SelectTrigger>
-                <SelectContent>
-                  {disciplinas.map(d => (<SelectItem key={d.id} value={d.nome}>{d.nome}</SelectItem>))}
-                </SelectContent>
-              </Select>
-              {errors.disciplina && <p className="text-red-500 text-sm mt-1">{errors.disciplina}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="escala">Escala</Label>
-              <Input id="escala" type="number" step="0.01" value={formData.escala} onChange={(e) => setFormData({ ...formData, escala: e.target.value })} placeholder="Ex: 100 (para 1:100)" />
-              <p className="text-xs text-gray-500">Escala do documento (ex: 100 para 1:100) - Campo opcional</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="fator_dificuldade">Fator de Dificuldade</Label>
-              <Input id="fator_dificuldade" type="number" step="0.1" value={formData.fator_dificuldade} onChange={(e) => setFormData({ ...formData, fator_dificuldade: e.target.value })} />
-            </div>
-          </div>
-
-          {formData.disciplina && subdisciplinasDisponiveis.length > 0 && (
-            <div>
-              <Label>Subdisciplinas * (selecione ao menos uma)</Label>
-              <div className="flex flex-wrap gap-2 mt-2 p-3 border rounded-md bg-gray-50">
-                {subdisciplinasDisponiveis.map(sub => (
-                  <div key={sub} className="flex items-center space-x-2">
-                    <Checkbox id={`sub-${sub}`} checked={formData.subdisciplinas.includes(sub)} onCheckedChange={() => handleSubdisciplinaToggle(sub)} />
-                    <Label htmlFor={`sub-${sub}`} className="cursor-pointer">{sub}</Label>
-                  </div>
-                ))}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="numero">Número do Documento *</Label>
+                <Input id="numero" value={formData.numero} onChange={(e) => setFormData({ ...formData, numero: e.target.value })} className={errors.numero ? 'border-red-500' : ''} placeholder="Ex: ARQ-01" required />
+                {errors.numero && <p className="text-red-500 text-sm mt-1">{errors.numero}</p>}
               </div>
-              {errors.subdisciplinas && <p className="text-red-500 text-sm mt-1">{errors.subdisciplinas}</p>}
+              <div className="space-y-2">
+                <Label htmlFor="arquivo">Nome do Arquivo *</Label>
+                <Input id="arquivo" value={formData.arquivo} onChange={(e) => setFormData({ ...formData, arquivo: e.target.value })} className={errors.arquivo ? 'border-red-500' : ''} placeholder="Ex: Planta Baixa Térreo" required />
+                {errors.arquivo && <p className="text-red-500 text-sm mt-1">{errors.arquivo}</p>}
+              </div>
             </div>
-          )}
 
-          {formData.subdisciplinas.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start gap-2 mb-3">
-                <Info className="w-5 h-5 text-blue-600 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-blue-900">Tempos Calculados</h4>
-                  <p className="text-sm text-blue-700">
-                    Os tempos são calculados automaticamente com base nas atividades disponíveis para as subdisciplinas selecionadas.
-                    {formData.pavimento_id && ' A área do pavimento é multiplicada pelo tempo padrão de cada atividade.'}
-                    {!formData.pavimento_id && (
-                      <span className="text-red-600 font-medium"> Sem pavimento selecionado, os tempos são baseados nos valores padrão das atividades multiplicado pelo fator de dificuldade.</span>
+            <div className="space-y-2">
+              <Label htmlFor="descritivo">Descritivo</Label>
+              <Input id="descritivo" value={formData.descritivo} onChange={(e) => setFormData({ ...formData, descritivo: e.target.value })} placeholder="Ex: Planta baixa do pavimento térreo com layout de móveis" />
+              <p className="text-xs text-gray-500">Descrição detalhada do documento (opcional)</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="pavimento_id">Pavimento (para cálculo de área)
+                  {formData.pavimento_id && pavimentos && pavimentos.length > 0 && (
+                    <span className="text-xs text-blue-600 ml-2">({pavimentos.find(p => p.id === formData.pavimento_id)?.area || 0} m²)</span>
+                  )}
+                </Label>
+                <Select value={formData.pavimento_id || ''} onValueChange={(value) => setFormData({ ...formData, pavimento_id: value || null })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o pavimento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Sem pavimento (usar horas padrão)</SelectItem>
+                    {pavimentos && pavimentos.length > 0 ? (
+                      pavimentos.map(pav => (
+                        <SelectItem key={pav.id} value={pav.id}>
+                          {pav.nome} - {Number(pav.area).toFixed(0)}m²
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="nenhum" disabled>Nenhum pavimento cadastrado</SelectItem>
                     )}
-                  </p>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formData.pavimento_id ? "A área do pavimento será usada para calcular o tempo das atividades (tempo/m² × área)" : "Sem pavimento, será usado o tempo padrão das atividades (sem multiplicar pela área)"}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="disciplina">Disciplina *</Label>
+                <Select value={formData.disciplina} onValueChange={(value) => setFormData({ ...formData, disciplina: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a disciplina" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {disciplinas.map(d => (<SelectItem key={d.id} value={d.nome}>{d.nome}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+                {errors.disciplina && <p className="text-red-500 text-sm mt-1">{errors.disciplina}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="escala">Escala</Label>
+                <Input id="escala" type="number" step="0.01" value={formData.escala} onChange={(e) => setFormData({ ...formData, escala: e.target.value })} placeholder="Ex: 100 (para 1:100)" />
+                <p className="text-xs text-gray-500">Escala do documento (ex: 100 para 1:100) - Campo opcional</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fator_dificuldade">Fator de Dificuldade</Label>
+                <Input id="fator_dificuldade" type="number" step="0.1" value={formData.fator_dificuldade} onChange={(e) => setFormData({ ...formData, fator_dificuldade: e.target.value })} />
+              </div>
+            </div>
+
+            {formData.disciplina && subdisciplinasDisponiveis.length > 0 && (
+              <div>
+                <Label>Subdisciplinas * (selecione ao menos uma)</Label>
+                <div className="flex flex-wrap gap-2 mt-2 p-3 border rounded-md bg-gray-50">
+                  {subdisciplinasDisponiveis.map(sub => (
+                    <div key={sub} className="flex items-center space-x-2">
+                      <Checkbox id={`sub-${sub}`} checked={formData.subdisciplinas.includes(sub)} onCheckedChange={() => handleSubdisciplinaToggle(sub)} />
+                      <Label htmlFor={`sub-${sub}`} className="cursor-pointer">{sub}</Label>
+                    </div>
+                  ))}
+                </div>
+                {errors.subdisciplinas && <p className="text-red-500 text-sm mt-1">{errors.subdisciplinas}</p>}
+              </div>
+            )}
+
+            {formData.subdisciplinas.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2 mb-3">
+                  <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-blue-900">Tempos Calculados</h4>
+                    <p className="text-sm text-blue-700">
+                      Os tempos são calculados automaticamente com base nas atividades disponíveis para as subdisciplinas selecionadas.
+                      {formData.pavimento_id && ' A área do pavimento é multiplicada pelo tempo padrão de cada atividade.'}
+                      {!formData.pavimento_id && (
+                        <span className="text-red-600 font-medium"> Sem pavimento selecionado, os tempos são baseados nos valores padrão das atividades multiplicado pelo fator de dificuldade.</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Total</p><p className="font-bold text-blue-900">{temposCalculados.total.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Concepção</p><p className="font-bold">{temposCalculados.concepcao.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Planejamento</p><p className="font-bold">{temposCalculados.planejamento.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Estudo Preliminar</p><p className="font-bold">{temposCalculados.estudo_preliminar.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Ante-Projeto</p><p className="font-bold">{temposCalculados.ante_projeto.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Projeto Básico</p><p className="font-bold">{temposCalculados.projeto_basico.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Projeto Executivo</p><p className="font-bold">{temposCalculados.projeto_executivo.toFixed(1)}h</p></div>
+                  <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Liberado p/ Obra</p><p className="font-bold">{temposCalculados.liberado_obra.toFixed(1)}h</p></div>
                 </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Total</p><p className="font-bold text-blue-900">{temposCalculados.total.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Concepção</p><p className="font-bold">{temposCalculados.concepcao.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Planejamento</p><p className="font-bold">{temposCalculados.planejamento.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Estudo Preliminar</p><p className="font-bold">{temposCalculados.estudo_preliminar.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Ante-Projeto</p><p className="font-bold">{temposCalculados.ante_projeto.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Projeto Básico</p><p className="font-bold">{temposCalculados.projeto_basico.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Projeto Executivo</p><p className="font-bold">{temposCalculados.projeto_executivo.toFixed(1)}h</p></div>
-                <div className="bg-white p-2 rounded border"><p className="text-xs text-gray-600">Liberado p/ Obra</p><p className="font-bold">{temposCalculados.liberado_obra.toFixed(1)}h</p></div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
-            <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}{doc ? 'Atualizar Documento' : 'Criar Documento'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
+              <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}{doc ? 'Atualizar Documento' : 'Criar Documento'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </div>
     </Dialog>
   );
 }
