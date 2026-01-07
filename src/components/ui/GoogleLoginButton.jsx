@@ -2,7 +2,11 @@ import React from 'react';
 
 export default function GoogleLoginButton() {
   const handleLogin = () => {
-    window.location.href = 'http://localhost:3001/auth/google';
+    const origin = window.location.origin || '';
+    const serverBase = process.env.REACT_APP_SERVER_URL
+      ? process.env.REACT_APP_SERVER_URL.replace(/\/$/, '')
+      : (/localhost:(3000|3002)/.test(origin) ? 'http://localhost:3001' : origin.replace(/\/$/, ''));
+    window.location.href = `${serverBase}/auth/google`;
   };
 
   return (

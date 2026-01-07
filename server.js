@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -12,9 +13,24 @@ const app = express();
 // Middleware para interpretar JSON
 app.use(express.json());
 // Libera CORS para o frontend
+const isProd = process.env.NODE_ENV === 'production';
+const PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || '';
+const FRONTEND_URL = process.env.FRONTEND_URL || (PUBLIC_URL ? PUBLIC_URL : 'http://localhost:3000');
+const SERVER_URL = process.env.SERVER_URL || (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.PORT || 3001}`);
+
 app.use(cors({
-  origin: [/^http:\/\/localhost:3000$/, /^http:\/\/localhost:3002$/, /^http:\/\/192\\.168\\.[0-9]+\\.[0-9]+:3002$/],
-  credentials: true
+  origin: (origin, callback) => {
+    // Permitir chamadas sem origin (como curl/serverside)
+    if (!origin) return callback(null, true);
+    const allowed = (
+      origin === FRONTEND_URL ||
+      origin === SERVER_URL ||
+      /^https?:\/\/.*onrender\.com$/.test(origin) ||
+      /^http:\/\/localhost:(3000|3002)$/.test(origin)
+    );
+    callback(null, allowed);
+  },
+  credentials: true,
 }));
 
 // --- ROTAS PARA EQUIPE E ALOCAÇÃO EQUIPE --- //
@@ -264,18 +280,30 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
     res.status(500).json({ error: 'Erro ao atualizar PlanejamentoAtividade', details: error.message });
   }
 });
-const port = 3001;
+// Porta dinâmica para ambientes de cloud (Render/Heroku/etc.)
+const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 
 
 
 // Configuração do PostgreSQL
-const pool = new Pool({
-  user: 'postgres', // Substituir pelo usuário correto
-  host: 'localhost',
-  database: 'interativa',
-  password: 'IntEng@2025', // Substituir pela senha correta
-  port: 5433,
-});
+let pool;
+if (process.env.DATABASE_URL) {
+  // Ex: postgres://user:pass@host:port/db
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false }
+  });
+  console.log('[DB] Usando DATABASE_URL do ambiente');
+} else {
+  pool = new Pool({
+    user: process.env.PGUSER || 'postgres',
+    host: process.env.PGHOST || 'localhost',
+    database: process.env.PGDATABASE || 'interativa',
+    password: process.env.PGPASSWORD || 'IntEng@2025',
+    port: process.env.PGPORT ? Number(process.env.PGPORT) : 5433,
+  });
+  console.log('[DB] Usando configuração local do PostgreSQL');
+}
 
 // Após inicializar o pool, garantir coluna valor_hora
 ensureEmpreendimentoValorHoraColumn();
@@ -286,18 +314,29 @@ app.use((req, res, next) => {
   next();
 });
 // Middlewares
+// Reaplicar CORS com mesmas regras para demais middlewares
 app.use(cors({
-  origin: [/^http:\/\/localhost:3000$/, /^http:\/\/localhost:3002$/, /^http:\/\/192\.168\.[0-9]+\.[0-9]+:3002$/],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const allowed = (
+      origin === FRONTEND_URL ||
+      origin === SERVER_URL ||
+      /^https?:\/\/.*onrender\.com$/.test(origin) ||
+      /^http:\/\/localhost:(3000|3002)$/.test(origin)
+    );
+    callback(null, allowed);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
+app.set('trust proxy', 1);
 app.use(session({
   secret: process.env.SESSION_SECRET || 'segredo_super_secreto',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false } // true se usar https
+  cookie: { secure: isProd } // usa cookie seguro em produção
 }));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -319,7 +358,7 @@ passport.deserializeUser(async (id, done) => {
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID || 'SUA_CLIENT_ID',
   clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'SUA_CLIENT_SECRET',
-  callbackURL: '/auth/google/callback',
+  callbackURL: `${SERVER_URL}/auth/google/callback`,
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     // Busca usuário pelo email
@@ -355,7 +394,7 @@ app.get('/auth/google/callback',
   }),
   (req, res) => {
     // Redireciona para o frontend após login
-    res.redirect('http://localhost:3000');
+    res.redirect(FRONTEND_URL);
   }
 );
 
@@ -1867,11 +1906,24 @@ app.delete('/api/documentos/:id', async (req, res) => {
     res.status(500).json({ error: 'Erro ao excluir documento', details: error.message });
   }
 });
+// Servir frontend estático em produção, se a pasta build existir
+try {
+  const buildDir = path.join(__dirname, 'build');
+  app.use(express.static(buildDir));
+  // Fallback para SPA
+  app.get('*', (req, res, next) => {
+    // Evita interceptar chamadas de API
+    if (req.path.startsWith('/api') || req.path.startsWith('/auth')) return next();
+    res.sendFile(path.join(buildDir, 'index.html'));
+  });
+} catch (e) {
+  // Ignora se a pasta build não existir (ambiente de desenvolvimento)
+}
+
 // Log ao iniciar o servidor
-app.listen(port, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${port}`);
-  console.log(`📊 API disponível em http://localhost:${port}/api`);
-  console.log(`🧪 Teste a conexão em http://localhost:${port}/api/test`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Servidor rodando na porta ${port}`);
+  console.log(`📊 API disponível em /api`);
 });
 
 // Tratamento graceful de encerramento

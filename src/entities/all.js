@@ -85,7 +85,20 @@ const logger = {
 };
 
 // Configuração da API
-const API_BASE_URL = 'http://localhost:3001/api';
+// Define base da API dinamicamente para funcionar em dev e produção
+let API_BASE_URL = process.env.REACT_APP_API_URL;
+if (!API_BASE_URL) {
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin || '';
+    if (/localhost:(3000|3002)/.test(origin)) {
+      API_BASE_URL = 'http://localhost:3001/api';
+    } else {
+      API_BASE_URL = origin.replace(/\/$/, '') + '/api';
+    }
+  } else {
+    API_BASE_URL = 'http://localhost:3001/api';
+  }
+}
 
 // Função auxiliar para requisições
 export const apiRequest = async (endpoint, options = {}) => {

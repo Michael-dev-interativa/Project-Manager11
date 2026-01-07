@@ -5,7 +5,11 @@ export default function Login() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/me', {
+    const origin = window.location.origin || '';
+    const apiBase = process.env.REACT_APP_API_URL
+      ? process.env.REACT_APP_API_URL.replace(/\/$/, '')
+      : (/localhost:(3000|3002)/.test(origin) ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api');
+    fetch(`${apiBase}/me`, {
       credentials: 'include',
     })
       .then(res => res.ok ? res.json() : null)

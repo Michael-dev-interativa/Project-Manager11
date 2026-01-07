@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: my-dashboard
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run server
+    healthCheckPath: /api/test
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
