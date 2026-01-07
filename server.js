@@ -308,7 +308,12 @@ if (process.env.DATABASE_URL) {
     ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false }
   });
   console.log('[DB] Usando DATABASE_URL do ambiente');
+} else if (isProd) {
+  console.error('[DB] DATABASE_URL ausente em produção. Configure a variável de ambiente no Render e faça o redeploy.');
+  // Aborta inicialização para evitar tentar conectar em localhost na nuvem
+  process.exit(1);
 } else {
+  // Ambiente de desenvolvimento local: permite fallback para localhost
   pool = new Pool({
     user: process.env.PGUSER || 'postgres',
     host: process.env.PGHOST || 'localhost',
@@ -438,6 +443,17 @@ app.get('/api/test', async (req, res) => {
   } catch (error) {
     console.error('Erro na conexão:', error);
     res.status(500).json({ error: 'Erro na conexão com banco de dados' });
+  }
+});
+
+// Healthcheck específico do banco, útil para Render
+app.get('/api/health/db', async (req, res) => {
+  try {
+    const ping = await pool.query('SELECT 1 as ok');
+    res.json({ ok: true, result: ping.rows[0].ok === 1, usingDatabaseUrl: !!process.env.DATABASE_URL });
+  } catch (error) {
+    console.error('[DB HEALTH] Falha:', error.message);
+    res.status(500).json({ ok: false, error: error.message, usingDatabaseUrl: !!process.env.DATABASE_URL });
   }
 });
 
