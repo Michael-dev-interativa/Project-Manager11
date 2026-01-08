@@ -312,13 +312,21 @@ const port = Number(process.env.SERVER_PORT || process.env.PORT || 3001);
 
 // Configuração do PostgreSQL
 let pool;
-if (process.env.DATABASE_URL) {
-  // Ex: postgres://user:pass@host:port/db
+// Aceita DATABASE_URL ou DATABASE (fallback) e sanitiza possíveis valores copiados com 'psql ...'
+const getSanitizedDbUrl = () => {
+  let url = process.env.DATABASE_URL || process.env.DATABASE || '';
+  if (!url) return '';
+  // remover prefixo 'psql ' se colado da CLI e aspas ao redor
+  url = url.replace(/^psql\s+/, '').replace(/^['"]|['"]$/g, '');
+  return url;
+};
+const DB_URL = getSanitizedDbUrl();
+if (DB_URL) {
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: DB_URL,
     ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false }
   });
-  console.log('[DB] Usando DATABASE_URL do ambiente');
+  console.log('[DB] Usando', process.env.DATABASE_URL ? 'DATABASE_URL' : 'DATABASE', 'do ambiente');
 } else if (isProd || isCloud) {
   console.error('[DB] DATABASE_URL ausente em produção/nuvem. Configure a variável de ambiente (Render) e faça o redeploy.');
   // Aborta inicialização para evitar tentar conectar em localhost na nuvem
