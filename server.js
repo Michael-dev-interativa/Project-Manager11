@@ -411,10 +411,11 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // Configuração do Google OAuth2
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `${SERVER_URL}/auth/google/callback`;
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID || 'SUA_CLIENT_ID',
   clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'SUA_CLIENT_SECRET',
-  callbackURL: `${SERVER_URL}/auth/google/callback`,
+  callbackURL: GOOGLE_CALLBACK_URL,
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     // Busca usuário pelo email
@@ -452,7 +453,7 @@ app.get('/api/health/auth', (req, res) => {
     ok: configured,
     clientIdPresent: Boolean(clientID),
     secretPresent: Boolean(clientSecret),
-    callbackURL: `${SERVER_URL}/auth/google/callback`
+    callbackURL: GOOGLE_CALLBACK_URL
   });
 });
 

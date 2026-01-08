@@ -3,10 +3,17 @@ import React from 'react';
 export default function GoogleLoginButton() {
   const handleLogin = () => {
     const origin = window.location.origin || '';
-    const serverBase = process.env.REACT_APP_SERVER_URL
-      ? process.env.REACT_APP_SERVER_URL.replace(/\/$/, '')
-      : (/localhost:(3000|3002)/.test(origin) ? 'http://localhost:3001' : origin.replace(/\/$/, ''));
-    window.location.href = `${serverBase}/auth/google`;
+    const isLocal = /localhost:(3000|3002)/.test(origin);
+
+    // Preferir backend direto em dev; em produção usar gateway /api para respeitar rewrites
+    const serverDirect = (process.env.REACT_APP_SERVER_URL || '').replace(/\/$/, '') || (isLocal ? 'http://localhost:3001' : '');
+    const apiBase = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '') || (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api');
+
+    const loginUrl = isLocal
+      ? `${serverDirect || 'http://localhost:3001'}/auth/google`
+      : `${apiBase}/auth/google`;
+
+    window.location.href = loginUrl;
   };
 
   return (
