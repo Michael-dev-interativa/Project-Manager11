@@ -14,9 +14,10 @@ const app = express();
 app.use(express.json());
 // Libera CORS para o frontend
 const isProd = process.env.NODE_ENV === 'production';
+const isCloud = Boolean(process.env.RENDER_EXTERNAL_URL || process.env.RENDER || process.env.RENDER_SERVICE_ID);
 const PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || (PUBLIC_URL ? PUBLIC_URL : 'http://localhost:3000');
-const SERVER_URL = process.env.SERVER_URL || (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.PORT || 3001}`);
+const SERVER_URL = process.env.SERVER_URL || (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.SERVER_PORT || process.env.PORT || 3001}`);
 
 // Logs de diagnóstico das variáveis de ambiente (não loga segredo completo)
 try {
@@ -24,8 +25,10 @@ try {
     ? `***${String(process.env.GOOGLE_CLIENT_SECRET).slice(-6)}`
     : 'undefined';
   console.log('[ENV] NODE_ENV:', process.env.NODE_ENV);
-  console.log('[ENV] PORT:', process.env.PORT);
+  console.log('[ENV] PORT (frontend):', process.env.PORT);
+  console.log('[ENV] SERVER_PORT (backend):', process.env.SERVER_PORT);
   console.log('[ENV] RENDER_EXTERNAL_URL:', process.env.RENDER_EXTERNAL_URL);
+  console.log('[ENV] IS_CLOUD (Render):', isCloud);
   console.log('[ENV] SERVER_URL:', SERVER_URL);
   console.log('[ENV] FRONTEND_URL:', FRONTEND_URL);
   console.log('[ENV] GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID || 'undefined');
@@ -295,7 +298,7 @@ app.put('/api/planejamento-atividades/:id', async (req, res) => {
   }
 });
 // Porta dinâmica para ambientes de cloud (Render/Heroku/etc.)
-const port = process.env.PORT ? Number(process.env.PORT) : 3001;
+const port = Number(process.env.SERVER_PORT || process.env.PORT || 3001);
 
 
 
@@ -308,8 +311,8 @@ if (process.env.DATABASE_URL) {
     ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false }
   });
   console.log('[DB] Usando DATABASE_URL do ambiente');
-} else if (isProd) {
-  console.error('[DB] DATABASE_URL ausente em produção. Configure a variável de ambiente no Render e faça o redeploy.');
+} else if (isProd || isCloud) {
+  console.error('[DB] DATABASE_URL ausente em produção/nuvem. Configure a variável de ambiente (Render) e faça o redeploy.');
   // Aborta inicialização para evitar tentar conectar em localhost na nuvem
   process.exit(1);
 } else {
@@ -351,14 +354,32 @@ app.use(cors({
 }));
 app.use(express.json());
 app.set('trust proxy', 1);
+// Cookies de sessão: seguras somente quando HTTPS/cloud; compatíveis com localhost
+const isHttps = SERVER_URL.startsWith('https://');
+const useSecureCookies = Boolean(isHttps || isCloud);
+const sameSiteMode = useSecureCookies ? 'none' : 'lax';
 app.use(session({
   secret: process.env.SESSION_SECRET || 'segredo_super_secreto',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: isProd } // usa cookie seguro em produção
+  cookie: {
+    secure: useSecureCookies, // exige HTTPS apenas em cloud/HTTPS
+    sameSite: sameSiteMode,
+  }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Rota raiz informativa para ambientes API-only (Render)
+app.get('/', (req, res) => {
+  res.json({
+    ok: true,
+    message: 'Backend ativo. Use /api/* ou /auth/google.',
+    serverUrl: SERVER_URL,
+    frontendUrl: FRONTEND_URL,
+    endpoints: ['/api', '/api/test', '/api/health/db', '/auth/google']
+  });
+});
 
 // Serialização do usuário na sessão
 passport.serializeUser((user, done) => {
@@ -402,9 +423,40 @@ passport.use(new GoogleStrategy({
 }));
 
 // Rotas de autenticação Google
-app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+// Health de Auth: verifica variáveis e callback
+app.get('/api/health/auth', (req, res) => {
+  const clientID = process.env.GOOGLE_CLIENT_ID || null;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || null;
+  const configured = Boolean(
+    clientID && clientSecret &&
+    !String(clientID).includes('SUA_CLIENT_ID') &&
+    !String(clientSecret).includes('SUA_CLIENT_SECRET')
+  );
+  res.json({
+    ok: configured,
+    clientIdPresent: Boolean(clientID),
+    secretPresent: Boolean(clientSecret),
+    callbackURL: `${SERVER_URL}/auth/google/callback`
+  });
+});
+
+// Início do fluxo Google com validação de configuração
+app.get('/auth/google', (req, res, next) => {
+  const clientID = process.env.GOOGLE_CLIENT_ID || '';
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+  const misconfigured = (
+    !clientID || !clientSecret ||
+    String(clientID).includes('SUA_CLIENT_ID') ||
+    String(clientSecret).includes('SUA_CLIENT_SECRET')
+  );
+  if (misconfigured) {
+    return res.status(500).json({
+      error: 'google_oauth_not_configured',
+      details: 'Defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no ambiente do backend.'
+    });
+  }
+  return passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
 
 app.get('/auth/google/callback',
   passport.authenticate('google', {
