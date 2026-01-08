@@ -449,11 +449,20 @@ app.get('/api/health/auth', (req, res) => {
     !String(clientID).includes('SUA_CLIENT_ID') &&
     !String(clientSecret).includes('SUA_CLIENT_SECRET')
   );
+  const tail = (v) => (v ? String(v).slice(-6) : null);
   res.json({
     ok: configured,
     clientIdPresent: Boolean(clientID),
     secretPresent: Boolean(clientSecret),
-    callbackURL: GOOGLE_CALLBACK_URL
+    callbackURL: GOOGLE_CALLBACK_URL,
+    diagnostics: {
+      serverUrl: SERVER_URL,
+      frontendUrl: FRONTEND_URL,
+      renderExternalUrl: process.env.RENDER_EXTERNAL_URL || null,
+      envKeysSeen: Object.keys(process.env).filter(k => /^GOOGLE_/.test(k)).sort(),
+      clientIdTail: tail(clientID),
+      clientSecretTail: clientSecret ? `***${tail(clientSecret)}` : null
+    }
   });
 });
 
