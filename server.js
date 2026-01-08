@@ -17,7 +17,15 @@ const isProd = process.env.NODE_ENV === 'production';
 const isCloud = Boolean(process.env.RENDER_EXTERNAL_URL || process.env.RENDER || process.env.RENDER_SERVICE_ID);
 const PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || (PUBLIC_URL ? PUBLIC_URL : 'http://localhost:3000');
-const SERVER_URL = process.env.SERVER_URL || (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.SERVER_PORT || process.env.PORT || 3001}`);
+// Preferir RENDER_EXTERNAL_URL em ambientes de cloud para evitar inconsistências
+let SERVER_URL = (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.SERVER_PORT || process.env.PORT || 3001}`);
+if (!isCloud && process.env.SERVER_URL) {
+  SERVER_URL = process.env.SERVER_URL;
+}
+if (isCloud && process.env.RENDER_EXTERNAL_URL && process.env.SERVER_URL && process.env.RENDER_EXTERNAL_URL !== process.env.SERVER_URL) {
+  console.warn('[ENV][WARN] SERVER_URL difere de RENDER_EXTERNAL_URL; usando RENDER_EXTERNAL_URL para callbacks OAuth.');
+  SERVER_URL = process.env.RENDER_EXTERNAL_URL;
+}
 
 // Logs de diagnóstico das variáveis de ambiente (não loga segredo completo)
 try {
