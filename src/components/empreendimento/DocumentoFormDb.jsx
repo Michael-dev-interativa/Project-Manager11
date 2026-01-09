@@ -41,6 +41,9 @@ export default function DocumentoForm({
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // Normalização para comparação sem acentos/caixa/espaços
+  const normalize = (s) => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
   useEffect(() => {
     if (doc) {
       setFormData({
@@ -105,8 +108,8 @@ export default function DocumentoForm({
     const atividadesRelacionadas = (allAtividades || []).filter(ativ => {
       const isGenericActivity = !ativ.empreendimento_id;
       if (!isGenericActivity) return false;
-      const disciplinaMatch = ativ.disciplina === formData.disciplina;
-      const subdisciplinaMatch = formData.subdisciplinas.includes(ativ.subdisciplina);
+      const disciplinaMatch = normalize(ativ.disciplina) === normalize(formData.disciplina);
+      const subdisciplinaMatch = formData.subdisciplinas.some(sub => normalize(sub) === normalize(ativ.subdisciplina));
       if (!disciplinaMatch || !subdisciplinaMatch) return false;
 
       const exclusoes = (allAtividades || []).filter(s_ativ =>
@@ -174,10 +177,12 @@ export default function DocumentoForm({
 
   const subdisciplinasDisponiveis = useMemo(() => {
     if (!formData.disciplina) return [];
-    const actividadesDaDisciplina = (allAtividades || []).filter(ativ => ativ.disciplina === formData.disciplina && !ativ.empreendimento_id);
-    const subdisciplinas = new Set();
-    actividadesDaDisciplina.forEach(ativ => { if (ativ.subdisciplina) subdisciplinas.add(ativ.subdisciplina); });
-    return Array.from(subdisciplinas).sort();
+    const actividadesDaDisciplina = (allAtividades || []).filter(
+      ativ => !ativ.empreendimento_id && normalize(ativ.disciplina) === normalize(formData.disciplina)
+    );
+    const subs = new Set();
+    actividadesDaDisciplina.forEach(ativ => { if (ativ.subdisciplina) subs.add(ativ.subdisciplina); });
+    return Array.from(subs).sort();
   }, [formData.disciplina, allAtividades]);
 
   const validate = () => {
