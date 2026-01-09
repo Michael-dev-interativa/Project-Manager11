@@ -3,7 +3,8 @@ import { X } from "lucide-react";
 import { motion } from "framer-motion";
 
 // ✅ URL BASE DA API
-const API_BASE_URL = 'http://localhost:3001/api';
+import { getApiBase } from '../../utils/apiBase'
+const API_BASE_URL = getApiBase();
 const EMPREENDIMENTO_ENDPOINT = 'Empreendimento';
 
 // ✅ FUNÇÕES DE CRUD SIMPLIFICADAS

@@ -15,6 +15,8 @@ import { format, startOfMonth, endOfMonth, parseISO, isAfter, isBefore, startOfW
 import { ptBR } from 'date-fns/locale';
 import { Calendar as CalendarIcon, RefreshCw, Filter, ChevronDown, ChevronRight, TrendingDown } from 'lucide-react';
 import { retryWithBackoff, delay } from '../components/utils/apiUtils';
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase();
 
 export default function Relatorios() {
   const [usuarios, setUsuarios] = useState([]);
@@ -41,9 +43,9 @@ export default function Relatorios() {
     try {
       // Busca via backend local
       const [usuariosRes, empreendimentosRes, execucoesRes] = await Promise.all([
-        fetch('http://localhost:3001/api/Usuario', { credentials: 'include' }),
-        fetch('http://localhost:3001/api/Empreendimento', { credentials: 'include' }),
-        fetch('http://localhost:3001/api/Execucao', { credentials: 'include' })
+        fetch(`${API_BASE}/Usuario`, { credentials: 'include' }),
+        fetch(`${API_BASE}/Empreendimento`, { credentials: 'include' }),
+        fetch(`${API_BASE}/Execucao`, { credentials: 'include' })
       ]);
 
       if (!usuariosRes.ok || !empreendimentosRes.ok || !execucoesRes.ok) {

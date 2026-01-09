@@ -1,3 +1,5 @@
+import { getApiBase } from '../../utils/apiBase'
+const API_BASE = getApiBase()
 import React, { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +17,7 @@ import { retryWithBackoff } from "../utils/apiUtils";
 // Entidade AlocacaoEquipe para integração com backend
 class AlocacaoEquipeEntity {
   async list(params = {}) {
-    let endpoint = 'http://localhost:3001/api/AlocacaoEquipe';
+    let endpoint = `${API_BASE}/AlocacaoEquipe`;
     if (Object.keys(params).length > 0) {
       const searchParams = new URLSearchParams(params);
       endpoint += `?${searchParams.toString()}`;
@@ -23,21 +25,21 @@ class AlocacaoEquipeEntity {
     return await fetch(endpoint).then(r => r.json());
   }
   async create(data) {
-    return await fetch('http://localhost:3001/api/AlocacaoEquipe', {
+    return await fetch(`${API_BASE}/AlocacaoEquipe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => r.json());
   }
   async update(id, data) {
-    return await fetch(`http://localhost:3001/api/AlocacaoEquipe/${id}`, {
+    return await fetch(`${API_BASE}/AlocacaoEquipe/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => r.json());
   }
   async delete(id) {
-    return await fetch(`http://localhost:3001/api/AlocacaoEquipe/${id}`, { method: 'DELETE' }).then(r => r.json());
+    return await fetch(`${API_BASE}/AlocacaoEquipe/${id}`, { method: 'DELETE' }).then(r => r.json());
   }
 }
 const AlocacaoEquipe = new AlocacaoEquipeEntity();
@@ -45,7 +47,7 @@ const AlocacaoEquipe = new AlocacaoEquipeEntity();
 // Entidade Equipe local (caso não exista no backend)
 class EquipeEntity {
   async list(params = {}) {
-    let endpoint = 'http://localhost:3001/api/Equipe';
+    let endpoint = `${API_BASE}/Equipe`;
     if (Object.keys(params).length > 0) {
       const searchParams = new URLSearchParams(params);
       endpoint += `?${searchParams.toString()}`;
@@ -53,24 +55,24 @@ class EquipeEntity {
     return await fetch(endpoint).then(r => r.json());
   }
   async get(id) {
-    return await fetch(`http://localhost:3001/api/Equipe/${id}`).then(r => r.json());
+    return await fetch(`${API_BASE}/Equipe/${id}`).then(r => r.json());
   }
   async create(data) {
-    return await fetch('http://localhost:3001/api/Equipe', {
+    return await fetch(`${API_BASE}/Equipe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => r.json());
   }
   async update(id, data) {
-    return await fetch(`http://localhost:3001/api/Equipe/${id}`, {
+    return await fetch(`${API_BASE}/Equipe/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => r.json());
   }
   async delete(id) {
-    return await fetch(`http://localhost:3001/api/Equipe/${id}`, { method: 'DELETE' })
+    return await fetch(`${API_BASE}/Equipe/${id}`, { method: 'DELETE' })
       .then(r => {
         if (r.status === 204) return true;
         try { return r.json(); } catch { return true; }

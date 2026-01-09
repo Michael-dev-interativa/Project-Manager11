@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/auth/(.*)",
+      "destination": "https://project-manager-back-ewdc.onrender.com/auth/$1"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "https://project-manager-back-ewdc.onrender.com/api/$1"
+    }
+  ]
+}

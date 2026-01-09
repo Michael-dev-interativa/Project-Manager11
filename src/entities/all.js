@@ -432,7 +432,8 @@ export const Usuario = {
   // ✅ MÉTODOS ESPECIAIS QUE ESTAVAM FALTANDO
   async me() {
     try {
-      return await apiRequest('/Usuario/me');
+      // Backend expõe /api/me para dados do usuário autenticado
+      return await apiRequest('/me');
     } catch (error) {
       logger.mockData('Retornando usuario mock atual');
       // Retornar o primeiro usuário admin como usuário atual

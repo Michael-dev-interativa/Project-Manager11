@@ -4,7 +4,8 @@ import { LineChart as LineChartIcon, RefreshCw, Calendar, Users } from 'lucide-r
 import { parseISO, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { buildCurvaSData, summarizeTotals } from '@/lib/curvaS';
 
-const BACKEND_URL = 'http://localhost:3001';
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase();
 
 function safeParseDate(input) {
   if (!input) return null;
@@ -40,7 +41,7 @@ function CurvaS() {
     async function load() {
       try {
         // Empreendimentos locais
-        const emps = await fetch(`${BACKEND_URL}/api/Empreendimento`)
+        const emps = await fetch(`${API_BASE}/Empreendimento`)
           .then(r => r.ok ? r.json() : [])
           .catch(() => []);
 
@@ -49,8 +50,8 @@ function CurvaS() {
         if (filters.empreendimento !== 'all') params.append('empreendimento_id', String(filters.empreendimento));
         if (filters.usuario !== 'all') params.append('executor_principal', String(filters.usuario));
         const [plansDoc, plansAtv] = await Promise.all([
-          fetch(`${BACKEND_URL}/api/planejamento-documentos?${params.toString()}`).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${BACKEND_URL}/api/planejamento-atividades?${params.toString()}`).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`${API_BASE}/planejamento-documentos?${params.toString()}`).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/planejamento-atividades?${params.toString()}`).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         const plans = [
           ...((Array.isArray(plansDoc) ? plansDoc : []).map(p => ({ ...p, tipo_planejamento: 'documento' }))),

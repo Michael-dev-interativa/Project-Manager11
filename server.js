@@ -10,7 +10,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const app = express();
 
 
-// Middleware para interpretar JSON
+// Middleware para interpretar JSONw
 app.use(express.json());
 // Libera CORS para o frontend
 const isProd = process.env.NODE_ENV === 'production';
@@ -51,6 +51,7 @@ app.use(cors({
       origin === FRONTEND_URL ||
       origin === SERVER_URL ||
       /^https?:\/\/.*onrender\.com$/.test(origin) ||
+      /^https?:\/\/.*\.vercel\.app$/.test(origin) ||
       /^http:\/\/localhost:(3000|3002)$/.test(origin)
     );
     callback(null, allowed);
@@ -360,6 +361,7 @@ app.use(cors({
       origin === FRONTEND_URL ||
       origin === SERVER_URL ||
       /^https?:\/\/.*onrender\.com$/.test(origin) ||
+      /^https?:\/\/.*\.vercel\.app$/.test(origin) ||
       /^http:\/\/localhost:(3000|3002)$/.test(origin)
     );
     callback(null, allowed);

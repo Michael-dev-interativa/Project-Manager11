@@ -6,7 +6,13 @@ export default function ProtectedRoute({ children }) {
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/me', { credentials: 'include' })
+    const origin = window.location.origin || '';
+    const isLocal = /localhost:(3000|3002)/.test(origin);
+    const apiBase = (process.env.REACT_APP_API_URL || '')
+      .replace(/\/$/, '')
+      || (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api');
+
+    fetch(`${apiBase}/me`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         setAuthenticated(!!(data && data.nome));

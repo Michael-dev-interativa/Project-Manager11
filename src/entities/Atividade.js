@@ -1,3 +1,5 @@
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase();
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -69,7 +71,7 @@ export const Atividade = {
   // Função para atualizar uma atividade
   update: async function (id, updateData) {
     try {
-      const response = await fetch(`http://localhost:3001/api/atividades/${id}`, {
+      const response = await fetch(`${API_BASE}/atividades/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

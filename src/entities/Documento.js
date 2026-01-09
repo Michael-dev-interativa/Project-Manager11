@@ -1,3 +1,5 @@
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase();
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -59,7 +61,7 @@ export const Documento = {
   // Função para atualizar um documento
   update: async function (id, updateData) {
     try {
-      const response = await fetch(`http://localhost:3001/api/documentos/${id}`, {
+      const response = await fetch(`${API_BASE}/documentos/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

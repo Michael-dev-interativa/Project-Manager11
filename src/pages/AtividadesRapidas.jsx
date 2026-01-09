@@ -12,7 +12,8 @@ import { ptBR } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:3001/api"
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase()
 
 export default function AtividadesRapidasPage() {
   const { user, startExecution, openExecutionModal } = useContext(ActivityTimerContext)

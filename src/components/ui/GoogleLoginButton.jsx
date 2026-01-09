@@ -9,9 +9,12 @@ export default function GoogleLoginButton() {
     const serverDirect = (process.env.REACT_APP_SERVER_URL || '').replace(/\/$/, '') || (isLocal ? 'http://localhost:3001' : '');
     const apiBase = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '') || (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api');
 
+    const preferDirectServer = !isLocal && !!serverDirect && /vercel\.app$/.test(new URL(origin).host);
     const loginUrl = isLocal
       ? `${serverDirect || 'http://localhost:3001'}/auth/google`
-      : `${apiBase}/auth/google`;
+      : preferDirectServer
+        ? `${serverDirect}/auth/google`
+        : `${apiBase}/auth/google`;
 
     window.location.href = loginUrl;
   };

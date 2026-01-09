@@ -1,3 +1,5 @@
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase();
 // Cliente front-end: usa o backend via fetch; não conectar direto ao PostgreSQL aqui.
 
 export const Pavimento = {
@@ -61,8 +63,8 @@ export const Pavimento = {
   list: async function (empreendimentoId = null) {
     try {
       const url = empreendimentoId
-        ? `http://localhost:3001/api/pavimentos?empreendimento_id=${encodeURIComponent(empreendimentoId)}`
-        : 'http://localhost:3001/api/pavimentos';
+        ? `${API_BASE}/pavimentos?empreendimento_id=${encodeURIComponent(empreendimentoId)}`
+        : `${API_BASE}/pavimentos`;
       const response = await fetch(url); // Endpoint do backend
       const data = await response.json();
       return data;
@@ -75,7 +77,7 @@ export const Pavimento = {
   // Função para atualizar um pavimento
   update: async function (id, updateData) {
     try {
-      const response = await fetch(`http://localhost:3001/api/pavimentos/${id}`, {
+      const response = await fetch(`${API_BASE}/pavimentos/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

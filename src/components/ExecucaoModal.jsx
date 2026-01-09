@@ -1,3 +1,5 @@
+import { getApiBase } from '../utils/apiBase'
+const API_BASE = getApiBase();
 import React, { useEffect, useState, useMemo } from "react";
 import { Execucao, PlanejamentoAtividade, PlanejamentoDocumento } from '../entities/all';
 import FinalizarExecucaoModal from './modals/FinalizarExecucaoModal';
@@ -95,7 +97,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
         const horasTimer = Number((segundos / 3600).toFixed(4));
         const tempoSeg = Math.max(0, Math.round(horasTimer * 3600));
         try {
-          const resp = await fetch('http://localhost:3001/api/Execucao/finish-quick', {
+          const resp = await fetch(`${API_BASE}/Execucao/finish-quick`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ usuario: atividade.usuario || '', tempo_total: tempoSeg })
@@ -175,12 +177,12 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
       try {
         if (atividade.tipo === 'documento' || atividade.documento_id) {
           // Alguns backends não expõem GET /:id; usar filtro por id
-          const response = await fetch(`http://localhost:3001/api/planejamento-documentos?id=${atividade.id}`);
+          const response = await fetch(`${API_BASE}/planejamento-documentos?id=${atividade.id}`);
           const data = await response.json();
           const atualizado = Array.isArray(data) ? data[0] : data;
           onFinish && onFinish(atualizado || { ...atividade, status: 'finalizado' });
         } else {
-          const response = await fetch(`http://localhost:3001/api/planejamento-atividades?id=${atividade.id}`);
+          const response = await fetch(`${API_BASE}/planejamento-atividades?id=${atividade.id}`);
           const data = await response.json();
           const atualizado = Array.isArray(data) ? data[0] : data;
           onFinish && onFinish(atualizado || { ...atividade, status: 'finalizado' });
@@ -247,7 +249,7 @@ export default function ExecucaoModal({ atividade, onClose, onPause, onFinish, o
         // Atualizar imediatamente a tabela de Execucao para refletir "Pausado" na lista do dia
         try {
           const tempoSeg = Math.max(0, Math.round(horasTimer * 3600));
-          await fetch('http://localhost:3001/api/Execucao/pause', {
+          await fetch(`${API_BASE}/Execucao/pause`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ planejamento_id: atividade.id, status: 'paralisado', tempo_total: tempoSeg })
