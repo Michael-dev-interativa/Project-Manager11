@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { getApiBase } from '../utils/apiBase'
 
 const EmpreendimentosPage = () => {
   const [usuarios, setUsuarios] = useState([]);
@@ -7,7 +8,8 @@ const EmpreendimentosPage = () => {
   useEffect(() => {
     const fetchUsuarios = async () => {
       try {
-        const response = await fetch('http://localhost:3000/usuarios'); // Endpoint do backend
+        const API_BASE = getApiBase();
+        const response = await fetch(`${API_BASE}/Usuario`, { credentials: 'include' });
         const data = await response.json();
         setUsuarios(data);
         setLoading(false);
