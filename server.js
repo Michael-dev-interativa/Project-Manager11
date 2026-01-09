@@ -1873,6 +1873,71 @@ app.put('/api/Empreendimento/:id', async (req, res) => {
   }
 });
 
+// Excluir Empreendimento (com limpeza de vínculos)
+app.delete('/api/Empreendimento/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  console.log(`🗑️ DELETE /api/Empreendimento/${id} - Excluindo empreendimento e vínculos`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Remover planejamentos relacionados (se existirem)
+    try {
+      const delPlanAtv = await client.query('DELETE FROM public."PlanejamentoAtividade" WHERE empreendimento_id = $1', [id]);
+      console.log(`[DEL] PlanejamentoAtividade removidos: ${delPlanAtv.rowCount}`);
+    } catch (e) {
+      console.warn('[DEL] PlanejamentoAtividade falhou (tabela pode não existir):', e.message);
+    }
+    try {
+      const delPlanDoc = await client.query('DELETE FROM public."PlanejamentoDocumento" WHERE empreendimento_id = $1', [id]);
+      console.log(`[DEL] PlanejamentoDocumento removidos: ${delPlanDoc.rowCount}`);
+    } catch (e) {
+      console.warn('[DEL] PlanejamentoDocumento falhou (tabela pode não existir):', e.message);
+    }
+
+    // Remover Execucoes relacionadas
+    try {
+      const delExec = await client.query('DELETE FROM public."Execucao" WHERE empreendimento_id = $1', [id]);
+      console.log(`[DEL] Execucao removidos: ${delExec.rowCount}`);
+    } catch (e) {
+      console.warn('[DEL] Execucao falhou (tabela pode não existir):', e.message);
+    }
+
+    // Remover vínculos DocumentoAtividade para documentos do empreendimento
+    const delVinculos = await client.query(
+      'DELETE FROM public."DocumentoAtividade" WHERE documento_id IN (SELECT id FROM public."Documento" WHERE empreendimento_id = $1)',
+      [id]
+    );
+    console.log(`[DEL] DocumentoAtividade vínculos removidos: ${delVinculos.rowCount}`);
+
+    // Remover atividades do empreendimento
+    const delAtividades = await client.query('DELETE FROM public."Atividade" WHERE empreendimento_id = $1', [id]);
+    console.log(`[DEL] Atividades removidas: ${delAtividades.rowCount}`);
+
+    // Remover documentos do empreendimento
+    const delDocs = await client.query('DELETE FROM public."Documento" WHERE empreendimento_id = $1', [id]);
+    console.log(`[DEL] Documentos removidos: ${delDocs.rowCount}`);
+
+    // Excluir o empreendimento
+    const delEmp = await client.query('DELETE FROM public."Empreendimento" WHERE id = $1 RETURNING *', [id]);
+    if (delEmp.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Empreendimento não encontrado' });
+    }
+
+    await client.query('COMMIT');
+    client.release();
+    console.log(`✅ Empreendimento ${id} e vínculos excluídos com sucesso`);
+    res.json({ message: 'Empreendimento excluído com sucesso', id });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    client.release();
+    console.error('❌ Erro ao excluir Empreendimento:', error);
+    res.status(500).json({ error: 'Erro ao excluir Empreendimento', details: error.message });
+  }
+});
+
 // Rota para buscar documentos de um empreendimento
 app.get('/api/documentos-empreendimento/:empreendimento_id', async (req, res) => {
   const empreendimento_id = parseInt(req.params.empreendimento_id);
