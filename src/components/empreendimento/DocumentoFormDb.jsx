@@ -181,7 +181,29 @@ export default function DocumentoForm({
       ativ => !ativ.empreendimento_id && normalize(ativ.disciplina) === normalize(formData.disciplina)
     );
     const subs = new Set();
-    actividadesDaDisciplina.forEach(ativ => { if (ativ.subdisciplina) subs.add(ativ.subdisciplina); });
+    actividadesDaDisciplina.forEach(ativ => {
+      // Preferir campo subdisciplina; fallback para descritivo
+      let cand = ativ.subdisciplina ?? ativ.descritivo ?? '';
+      if (!cand) return;
+      if (Array.isArray(cand)) {
+        cand.forEach(s => { const v = String(s).trim(); if (v) subs.add(v); });
+      } else if (typeof cand === 'string') {
+        // Tentar parse de JSON, senão split por vírgula
+        let handled = false;
+        if (/^\s*\[.*\]\s*$/.test(cand)) {
+          try {
+            const arr = JSON.parse(cand);
+            if (Array.isArray(arr)) {
+              arr.forEach(s => { const v = String(s).trim(); if (v) subs.add(v); });
+              handled = true;
+            }
+          } catch { /* ignore */ }
+        }
+        if (!handled) {
+          cand.split(',').map(s => s.trim()).filter(Boolean).forEach(v => subs.add(v));
+        }
+      }
+    });
     return Array.from(subs).sort();
   }, [formData.disciplina, allAtividades]);
 
