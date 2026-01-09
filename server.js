@@ -1917,6 +1917,34 @@ app.get('/api/documentos', async (req, res) => {
       );
     }
     console.log(`📦 Encontrados ${result.rows.length} documentos`);
+
+    // ✅ Recalcular tempo_total dinamicamente a partir das atividades vinculadas (fallback)
+    try {
+      const ids = result.rows.map(r => r.id).filter(Boolean);
+      if (ids.length > 0) {
+        const totalsRes = await client.query(
+          `SELECT da.documento_id, COALESCE(SUM(a.tempo), 0) AS total
+           FROM public."DocumentoAtividade" da
+           JOIN public."Atividade" a ON a.id = da.atividade_id
+           WHERE da.documento_id = ANY($1::int[])
+           GROUP BY da.documento_id`,
+          [ids]
+        );
+        const totalsMap = new Map();
+        for (const row of totalsRes.rows) {
+          totalsMap.set(row.documento_id, parseFloat(row.total) || 0);
+        }
+        // Atualiza o valor retornado (sem obrigar persistência)
+        for (const doc of result.rows) {
+          const computed = totalsMap.get(doc.id);
+          if (computed !== undefined) {
+            doc.tempo_total = computed;
+          }
+        }
+      }
+    } catch (sumErr) {
+      console.warn('⚠️ Falha ao calcular tempo_total em GET /api/documentos:', sumErr.message);
+    }
     client.release();
     res.json(result.rows);
   } catch (error) {
