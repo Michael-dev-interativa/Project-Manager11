@@ -18,6 +18,7 @@ const EmpreendimentoDB = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify(data)
     });
 
@@ -43,6 +44,7 @@ const EmpreendimentoDB = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify(data)
     });
 

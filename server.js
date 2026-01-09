@@ -1804,6 +1804,45 @@ app.get('/api/Empreendimento', async (req, res) => {
   }
 });
 
+// Criar Empreendimento
+app.post('/api/Empreendimento', async (req, res) => {
+  try {
+    const data = req.body || {};
+    // Campos permitidos para inserção
+    const allowed = ['nome', 'cliente', 'endereco', 'status', 'cidade', 'uf', 'data_inicio', 'data_prevista', 'valor_hora'];
+    const cols = [];
+    const vals = [];
+    const params = [];
+    let idx = 1;
+    for (const field of allowed) {
+      if (data[field] !== undefined) {
+        cols.push(`"${field}"`);
+        // Conversão adequada de tipos quando necessário
+        if (field === 'valor_hora') params.push(data[field] !== null ? parseFloat(data[field]) : null);
+        else params.push(data[field]);
+        vals.push(`$${idx++}`);
+      }
+    }
+    // Valor padrão de status, se não informado
+    if (!cols.includes('"status"')) {
+      cols.push('"status"');
+      params.push('em_planejamento');
+      vals.push(`$${idx++}`);
+    }
+
+    if (cols.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo válido para criar Empreendimento' });
+    }
+
+    const sql = `INSERT INTO public."Empreendimento" (${cols.join(', ')}) VALUES (${vals.join(', ')}) RETURNING *`;
+    const r = await pool.query(sql, params);
+    res.status(201).json(r.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar Empreendimento:', error);
+    res.status(500).json({ error: 'Erro ao criar Empreendimento', details: error.message });
+  }
+});
+
 // Atualizar campos do Empreendimento (ex.: valor_hora)
 app.put('/api/Empreendimento/:id', async (req, res) => {
   const id = parseInt(req.params.id);

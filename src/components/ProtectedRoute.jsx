@@ -8,9 +8,9 @@ export default function ProtectedRoute({ children }) {
   useEffect(() => {
     const origin = window.location.origin || '';
     const isLocal = /localhost:(3000|3002)/.test(origin);
-    const apiBase = (process.env.REACT_APP_API_URL || '')
-      .replace(/\/$/, '')
-      || (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api');
+    const serverDirect = (process.env.REACT_APP_SERVER_URL || '').replace(/\/$/, '');
+    const envApi = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+    const apiBase = envApi || (serverDirect ? `${serverDirect}/api` : (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api'));
 
     fetch(`${apiBase}/me`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : null)
