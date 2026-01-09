@@ -1,5 +1,4 @@
 import { getApiBase } from '../../utils/apiBase'
-const API_BASE = getApiBase()
 import React, { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +14,7 @@ import { PlanejamentoAtividade, Empreendimento, Documento, Usuario } from "@/ent
 import { retryWithBackoff } from "../utils/apiUtils";
 
 // Entidade AlocacaoEquipe para integração com backend
+const API_BASE = getApiBase()
 class AlocacaoEquipeEntity {
   async list(params = {}) {
     let endpoint = `${API_BASE}/AlocacaoEquipe`;
