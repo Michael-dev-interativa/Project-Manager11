@@ -3077,7 +3077,22 @@ app.get('/api/documentos/:id', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Documento não encontrado' });
     }
-    res.json(result.rows[0]);
+    const doc = result.rows[0];
+    // ✅ Fallback: calcular tempo_total com base nas atividades vinculadas
+    try {
+      const sumRes = await pool.query(
+        `SELECT COALESCE(SUM(a.tempo), 0) AS total
+         FROM public."DocumentoAtividade" da
+         JOIN public."Atividade" a ON a.id = da.atividade_id
+         WHERE da.documento_id = $1`,
+        [id]
+      );
+      const totalHoras = parseFloat(sumRes.rows?.[0]?.total ?? 0) || 0;
+      doc.tempo_total = totalHoras;
+    } catch (e) {
+      // não bloqueia resposta
+    }
+    res.json(doc);
   } catch (error) {
     console.error('Erro ao buscar documento por ID:', error);
     res.status(500).json({ error: 'Erro ao buscar documento' });
