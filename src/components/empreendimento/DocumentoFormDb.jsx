@@ -177,13 +177,24 @@ export default function DocumentoForm({
 
   const subdisciplinasDisponiveis = useMemo(() => {
     if (!formData.disciplina) return [];
-    const actividadesDaDisciplina = (allAtividades || []).filter(
-      ativ => !ativ.empreendimento_id && normalize(ativ.disciplina) === normalize(formData.disciplina)
-    );
+    const actividadesDaDisciplina = (allAtividades || []).filter(ativ => {
+      // Aceitar atividades de catálogo (sem empreendimento) ou específicas do empreendimento atual
+      const pertenceAoCatalogo = !ativ.empreendimento_id;
+      const pertenceAoProjeto = empreendimentoId && (Number(ativ.empreendimento_id) === Number(empreendimentoId));
+      const disciplinaMatch = normalize(ativ.disciplina) === normalize(formData.disciplina);
+      return disciplinaMatch && (pertenceAoCatalogo || pertenceAoProjeto);
+    });
+    // Debug: quantidades e amostras
+    try {
+      console.log('[DocumentoForm] Disciplina selecionada:', formData.disciplina);
+      console.log('[DocumentoForm] Atividades totais:', (allAtividades || []).length);
+      console.log('[DocumentoForm] Atividades da disciplina:', actividadesDaDisciplina.length);
+      console.log('[DocumentoForm] Exemplos:', actividadesDaDisciplina.slice(0, 3));
+    } catch (e) { }
     const subs = new Set();
     actividadesDaDisciplina.forEach(ativ => {
       // Preferir campo subdisciplina; fallback para descritivo
-      let cand = ativ.subdisciplina ?? ativ.descritivo ?? '';
+      let cand = ativ.subdisciplina ?? ativ.descritivo ?? ativ.subdisciplinas ?? '';
       if (!cand) return;
       if (Array.isArray(cand)) {
         cand.forEach(s => { const v = String(s).trim(); if (v) subs.add(v); });
@@ -204,6 +215,7 @@ export default function DocumentoForm({
         }
       }
     });
+    try { console.log('[DocumentoForm] Subdisciplinas derivadas:', Array.from(subs)); } catch (e) { }
     return Array.from(subs).sort();
   }, [formData.disciplina, allAtividades]);
 
