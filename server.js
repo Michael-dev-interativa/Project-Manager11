@@ -383,14 +383,12 @@ const isHttps = SERVER_URL.startsWith('https://');
 const useSecureCookies = Boolean(isHttps || isCloud);
 const sameSiteMode = useSecureCookies ? 'none' : 'lax';
 app.use(session({
-  name: process.env.SESSION_NAME || 'pm.sid',
   secret: process.env.SESSION_SECRET || 'segredo_super_secreto',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: useSecureCookies, // exige HTTPS apenas em cloud/HTTPS
     sameSite: sameSiteMode,
-    partitioned: true, // CHIPS: permite cookie em contexto cross-site de forma particionada
   }
 }));
 app.use(passport.initialize());
@@ -1817,7 +1815,6 @@ app.post('/api/Empreendimento', async (req, res) => {
     for (const field of allowed) {
       if (data[field] !== undefined) {
         cols.push(`"${field}"`);
-        // Conversão adequada de tipos quando necessário
         if (field === 'valor_hora') params.push(data[field] !== null ? parseFloat(data[field]) : null);
         else params.push(data[field]);
         vals.push(`$${idx++}`);
@@ -1836,10 +1833,10 @@ app.post('/api/Empreendimento', async (req, res) => {
 
     const sql = `INSERT INTO public."Empreendimento" (${cols.join(', ')}) VALUES (${vals.join(', ')}) RETURNING *`;
     const r = await pool.query(sql, params);
-    res.status(201).json(r.rows[0]);
+    return res.status(201).json(r.rows[0]);
   } catch (error) {
     console.error('❌ Erro ao criar Empreendimento:', error);
-    res.status(500).json({ error: 'Erro ao criar Empreendimento', details: error.message });
+    return res.status(500).json({ error: 'Erro ao criar Empreendimento', details: error.message });
   }
 });
 
