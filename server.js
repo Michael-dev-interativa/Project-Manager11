@@ -383,12 +383,14 @@ const isHttps = SERVER_URL.startsWith('https://');
 const useSecureCookies = Boolean(isHttps || isCloud);
 const sameSiteMode = useSecureCookies ? 'none' : 'lax';
 app.use(session({
+  name: process.env.SESSION_NAME || 'pm.sid',
   secret: process.env.SESSION_SECRET || 'segredo_super_secreto',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: useSecureCookies, // exige HTTPS apenas em cloud/HTTPS
     sameSite: sameSiteMode,
+    partitioned: true, // CHIPS: permite cookie em contexto cross-site de forma particionada
   }
 }));
 app.use(passport.initialize());
