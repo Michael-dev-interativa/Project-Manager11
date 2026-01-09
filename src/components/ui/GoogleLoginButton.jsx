@@ -1,20 +1,21 @@
 import React from 'react';
+import { getApiBase } from '../../utils/apiBase'
 
 export default function GoogleLoginButton() {
   const handleLogin = () => {
     const origin = window.location.origin || '';
     const isLocal = /localhost:(3000|3002)/.test(origin);
 
-    // Preferir backend direto em dev; em produção usar gateway /api para respeitar rewrites
-    const serverDirect = (process.env.REACT_APP_SERVER_URL || '').replace(/\/$/, '') || (isLocal ? 'http://localhost:3001' : '');
-    const apiBase = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '') || (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api');
+    const apiBase = getApiBase().replace(/\/$/, '');
+    const serverDirect = (process.env.REACT_APP_SERVER_URL || '').replace(/\/$/, '');
 
-    const preferDirectServer = !isLocal && !!serverDirect && /vercel\.app$/.test(new URL(origin).host);
+    // Se estivermos usando rewrites (apiBase começa com '/api' ou mesmo domínio), ir via /api/auth/google
+    const usingRewrites = !isLocal && (apiBase === '/api' || apiBase.startsWith(origin + '/api') || apiBase.startsWith('/api'));
     const loginUrl = isLocal
       ? `${serverDirect || 'http://localhost:3001'}/auth/google`
-      : preferDirectServer
-        ? `${serverDirect}/auth/google`
-        : `${apiBase}/auth/google`;
+      : usingRewrites
+        ? `${origin.replace(/\/$/, '')}/api/auth/google`
+        : `${(serverDirect || apiBase.replace(/\/api$/, ''))}/auth/google`;
 
     window.location.href = loginUrl;
   };
