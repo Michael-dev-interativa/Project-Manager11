@@ -3008,6 +3008,26 @@ app.post('/api/documentos', async (req, res) => {
         atividadesIds.push(novaAtividadeId);
       }
       novoDocumento.atividades_ids = atividadesIds;
+
+      // ✅ Após vincular atividades, recalcular e atualizar o tempo_total do documento
+      try {
+        const sumRes = await client.query(
+          `SELECT COALESCE(SUM(a.tempo), 0) AS total
+           FROM public."DocumentoAtividade" da
+           JOIN public."Atividade" a ON a.id = da.atividade_id
+           WHERE da.documento_id = $1`,
+          [novoDocumento.id]
+        );
+        const totalHoras = parseFloat(sumRes.rows?.[0]?.total ?? 0) || 0;
+        await client.query(
+          'UPDATE public."Documento" SET tempo_total = $2 WHERE id = $1',
+          [novoDocumento.id, totalHoras]
+        );
+        novoDocumento.tempo_total = totalHoras;
+        console.log(`🧮 tempo_total atualizado: ${totalHoras}h para Documento id=${novoDocumento.id}`);
+      } catch (calcErr) {
+        console.warn('⚠️ Falha ao recalcular tempo_total após vínculo de atividades:', calcErr.message);
+      }
     }
 
     client.release();
