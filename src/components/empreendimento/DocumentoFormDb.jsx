@@ -185,7 +185,10 @@ export default function DocumentoForm({
     if (!formData.numero.trim()) newErrors.numero = "Número é obrigatório";
     if (!formData.arquivo.trim()) newErrors.arquivo = "Nome do arquivo é obrigatório";
     if (!formData.disciplina) newErrors.disciplina = "Disciplina é obrigatória";
-    if (formData.subdisciplinas.length === 0) newErrors.subdisciplinas = "Selecione ao menos uma subdisciplina";
+    // Só exigir subdisciplinas se houver opções disponíveis para a disciplina
+    if ((subdisciplinasDisponiveis || []).length > 0 && formData.subdisciplinas.length === 0) {
+      newErrors.subdisciplinas = "Selecione ao menos uma subdisciplina";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -202,7 +205,8 @@ export default function DocumentoForm({
         pavimento_id: formData.pavimento_id,
         disciplina: formData.disciplina,
         subdisciplinas: formData.subdisciplinas,
-        escala: formData.escala ? Number(formData.escala) : null,
+        // Enviar escala como texto para evitar erro de trim no backend
+        escala: formData.escala ? String(formData.escala) : '',
         fator_dificuldade: Number(formData.fator_dificuldade),
         empreendimento_id: empreendimentoId,
         tempo_total: Number(formData.tempo_total) || 0,

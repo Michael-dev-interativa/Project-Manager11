@@ -318,6 +318,7 @@ const EmpreendimentoDetalhes = () => {
             <DocumentosTab
               empreendimento={empreendimento}
               disciplinas={disciplinas}
+              atividades={atividadesState}
               documentos={documentosState}
               isActive={activeTab === 'documentos'}
             />
