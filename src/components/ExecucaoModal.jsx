@@ -1,10 +1,12 @@
 import { getApiBase } from '../utils/apiBase'
-const API_BASE = getApiBase();
+
 import React, { useEffect, useState, useMemo } from "react";
 import { Execucao, PlanejamentoAtividade, PlanejamentoDocumento } from '../entities/all';
 import FinalizarExecucaoModal from './modals/FinalizarExecucaoModal';
 
 // Função utilitária exportada para iniciar uma execução a partir de qualquer lugar
+const API_BASE = getApiBase();
+
 export async function iniciarExecucao(atividade) {
   try {
     let result;
