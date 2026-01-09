@@ -307,7 +307,8 @@ export default function DocumentoForm({
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a disciplina" />
                   </SelectTrigger>
-                  <SelectContent>
+                  {/* Aumentar z-index do dropdown para sobrepor o modal */}
+                  <SelectContent style={{ zIndex: 1100 }}>
                     {disciplinas.map(d => (<SelectItem key={d.id} value={d.nome}>{d.nome}</SelectItem>))}
                   </SelectContent>
                 </Select>
