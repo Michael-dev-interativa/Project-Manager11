@@ -11,6 +11,7 @@ import retryWithBackoff from "@/utils/retryWithBackoff";
 
 export default function DocumentoForm({
   doc,
+  documento,
   empreendimentoId,
   empreendimentoNome,
   onClose,
@@ -20,6 +21,8 @@ export default function DocumentoForm({
   pavimentos = [],
   documentos = []
 }) {
+  // Unificar possível alias vindo do chamador
+  const currentDoc = doc || documento || null;
   const [formData, setFormData] = useState({
     numero: "",
     arquivo: "",
@@ -45,27 +48,27 @@ export default function DocumentoForm({
   const normalize = (s) => (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 
   useEffect(() => {
-    if (doc) {
+    if (currentDoc) {
       setFormData({
-        numero: doc.numero || "",
-        arquivo: doc.arquivo || "",
-        descritivo: doc.descritivo || "",
-        pavimento_id: doc.pavimento_id || null,
-        disciplina: doc.disciplina || "",
-        subdisciplinas: Array.isArray(doc.subdisciplinas) ? doc.subdisciplinas : (doc.subdisciplinas ? String(doc.subdisciplinas).split(',').map(s => s.trim()).filter(Boolean) : []),
-        escala: doc.escala || "",
-        fator_dificuldade: doc.fator_dificuldade || 1,
-        tempo_total: doc.tempo_total || 0,
-        tempo_estudo_preliminar: doc.tempo_estudo_preliminar || 0,
-        tempo_ante_projeto: doc.tempo_ante_projeto || 0,
-        tempo_projeto_basico: doc.tempo_projeto_basico || 0,
-        tempo_projeto_executivo: doc.tempo_projeto_executivo || 0,
-        tempo_liberado_obra: doc.tempo_liberado_obra || 0,
-        tempo_concepcao: doc.tempo_concepcao || 0,
-        tempo_planejamento: doc.tempo_planejamento || 0
+        numero: currentDoc.numero || "",
+        arquivo: currentDoc.arquivo || "",
+        descritivo: currentDoc.descritivo || "",
+        pavimento_id: currentDoc.pavimento_id || null,
+        disciplina: currentDoc.disciplina || "",
+        subdisciplinas: Array.isArray(currentDoc.subdisciplinas) ? currentDoc.subdisciplinas : (currentDoc.subdisciplinas ? String(currentDoc.subdisciplinas).split(',').map(s => s.trim()).filter(Boolean) : []),
+        escala: currentDoc.escala || "",
+        fator_dificuldade: currentDoc.fator_dificuldade || 1,
+        tempo_total: currentDoc.tempo_total || 0,
+        tempo_estudo_preliminar: currentDoc.tempo_estudo_preliminar || 0,
+        tempo_ante_projeto: currentDoc.tempo_ante_projeto || 0,
+        tempo_projeto_basico: currentDoc.tempo_projeto_basico || 0,
+        tempo_projeto_executivo: currentDoc.tempo_projeto_executivo || 0,
+        tempo_liberado_obra: currentDoc.tempo_liberado_obra || 0,
+        tempo_concepcao: currentDoc.tempo_concepcao || 0,
+        tempo_planejamento: currentDoc.tempo_planejamento || 0
       });
     }
-  }, [doc]);
+  }, [currentDoc]);
 
   // Overrides por empreendimento
   const etapaOverridesMap = useMemo(() => {
@@ -119,7 +122,7 @@ export default function DocumentoForm({
       );
       const exclusaoGlobal = exclusoes.find(exc => !exc.documento_id);
       if (exclusaoGlobal) return false;
-      if (doc?.id) {
+      if (currentDoc?.id) {
         const exclusaoEspecifica = exclusoes.find(exc => exc.documento_id === doc.id);
         if (exclusaoEspecifica) return false;
       }
@@ -146,20 +149,42 @@ export default function DocumentoForm({
         : tempoBase * fatorDificuldade;
       const etapaFinal = etapaOverridesMap.has(ativ.id) ? etapaOverridesMap.get(ativ.id) : ativ.etapa;
       switch (etapaFinal) {
-        case 'Concepção': tempos.concepcao += tempoCalculado; break;
-        case 'Planejamento': tempos.planejamento += tempoCalculado; break;
-        case 'Estudo Preliminar': tempos.estudo_preliminar += tempoCalculado; tempos.total += tempoCalculado; break;
-        case 'Ante-Projeto': tempos.ante_projeto += tempoCalculado; tempos.total += tempoCalculado; break;
-        case 'Projeto Básico': tempos.projeto_basico += tempoCalculado; tempos.total += tempoCalculado; break;
-        case 'Projeto Executivo': tempos.projeto_executivo += tempoCalculado; tempos.total += tempoCalculado; break;
-        case 'Liberado para Obra': tempos.liberado_obra += tempoCalculado; tempos.total += tempoCalculado; break;
-        default: break;
+        case 'Concepção':
+          tempos.concepcao += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        case 'Planejamento':
+          tempos.planejamento += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        case 'Estudo Preliminar':
+          tempos.estudo_preliminar += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        case 'Ante-Projeto':
+          tempos.ante_projeto += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        case 'Projeto Básico':
+          tempos.projeto_basico += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        case 'Projeto Executivo':
+          tempos.projeto_executivo += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        case 'Liberado para Obra':
+          tempos.liberado_obra += tempoCalculado;
+          tempos.total += tempoCalculado;
+          break;
+        default:
+          break;
       }
     });
 
     Object.keys(tempos).forEach(key => { tempos[key] = Number(tempos[key].toFixed(2)); });
     return tempos;
-  }, [formData.disciplina, formData.subdisciplinas, formData.fator_dificuldade, formData.pavimento_id, allAtividades, pavimentos, etapaOverridesMap, tempoOverridesMap, empreendimentoId, doc]);
+  }, [formData.disciplina, formData.subdisciplinas, formData.fator_dificuldade, formData.pavimento_id, allAtividades, pavimentos, etapaOverridesMap, tempoOverridesMap, empreendimentoId, currentDoc]);
 
   useEffect(() => {
     setFormData(prev => ({
@@ -192,14 +217,13 @@ export default function DocumentoForm({
       console.log('[DocumentoForm] Exemplos:', actividadesDaDisciplina.slice(0, 3));
     } catch (e) { }
     const subs = new Set();
-    actividadesDaDisciplina.forEach(ativ => {
-      // Preferir campo subdisciplina; fallback para descritivo
-      let cand = ativ.subdisciplina ?? ativ.descritivo ?? ativ.subdisciplinas ?? '';
+
+    // Função auxiliar para adicionar candidatos a subdisciplinas de forma robusta
+    const addCandidate = (cand) => {
       if (!cand) return;
       if (Array.isArray(cand)) {
         cand.forEach(s => { const v = String(s).trim(); if (v) subs.add(v); });
       } else if (typeof cand === 'string') {
-        // Tentar parse de JSON, senão split por vírgula
         let handled = false;
         if (/^\s*\[.*\]\s*$/.test(cand)) {
           try {
@@ -214,7 +238,28 @@ export default function DocumentoForm({
           cand.split(',').map(s => s.trim()).filter(Boolean).forEach(v => subs.add(v));
         }
       }
+    };
+
+    // 1) Caminho principal: derivar a partir das atividades cuja DISCIPLINA = selecionada
+    actividadesDaDisciplina.forEach(ativ => {
+      // Preferir campo subdisciplina; fallbacks secundários se existirem
+      let cand = ativ.subdisciplina ?? ativ.descritivo ?? ativ.subdisciplinas ?? '';
+      addCandidate(cand);
     });
+
+    // 2) Fallback: se nada foi encontrado pela disciplina, considerar quando a seleção equivale à SUBDISCIPLINA
+    if (subs.size === 0 && actividadesDaDisciplina.length === 0) {
+      const atividadesPorSub = (allAtividades || []).filter(ativ => {
+        const pertenceAoCatalogo = !ativ.empreendimento_id;
+        const pertenceAoProjeto = empreendimentoId && (Number(ativ.empreendimento_id) === Number(empreendimentoId));
+        const subMatch = normalize(ativ.subdisciplina) === normalize(formData.disciplina);
+        return subMatch && (pertenceAoCatalogo || pertenceAoProjeto);
+      });
+      // Neste caso, oferecemos ao menos a própria seleção como opção de subdisciplina
+      if (atividadesPorSub.length > 0) {
+        subs.add(formData.disciplina);
+      }
+    }
     try { console.log('[DocumentoForm] Subdisciplinas derivadas:', Array.from(subs)); } catch (e) { }
     return Array.from(subs).sort();
   }, [formData.disciplina, allAtividades]);
@@ -259,8 +304,8 @@ export default function DocumentoForm({
       };
 
       let savedDoc;
-      if (doc?.id) {
-        savedDoc = await retryWithBackoff(() => Documento.update(doc.id, docData), 3, 500, 'updateDocumento');
+      if (currentDoc?.id) {
+        savedDoc = await retryWithBackoff(() => Documento.update(currentDoc.id, docData), 3, 500, 'updateDocumento');
       } else {
         savedDoc = await retryWithBackoff(() => Documento.create(docData), 3, 500, 'createDocumento');
       }
@@ -288,7 +333,7 @@ export default function DocumentoForm({
         <DialogContent className="dialog-content">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>{doc ? 'Editar Documento' : 'Novo Documento'}</span>
+              <span>{currentDoc ? 'Editar Documento' : 'Novo Documento'}</span>
               <Button variant="ghost" size="icon" onClick={onClose}>
                 <X className="w-4 h-4" />
               </Button>
@@ -416,7 +461,7 @@ export default function DocumentoForm({
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
-              <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}{doc ? 'Atualizar Documento' : 'Criar Documento'}</Button>
+              <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}{currentDoc ? 'Atualizar Documento' : 'Criar Documento'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
