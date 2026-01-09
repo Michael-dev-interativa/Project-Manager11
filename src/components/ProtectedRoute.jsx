@@ -1,17 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import { getApiBase } from '../utils/apiBase'
 
 export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
-    const origin = window.location.origin || '';
-    const isLocal = /localhost:(3000|3002)/.test(origin);
-    const serverDirect = (process.env.REACT_APP_SERVER_URL || '').replace(/\/$/, '');
-    const envApi = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
-    const apiBase = envApi || (serverDirect ? `${serverDirect}/api` : (isLocal ? 'http://localhost:3001/api' : origin.replace(/\/$/, '') + '/api'));
-
+    const apiBase = getApiBase().replace(/\/$/, '');
     fetch(`${apiBase}/me`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : null)
       .then(data => {

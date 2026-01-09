@@ -9,6 +9,7 @@ import { Documento, Atividade, Usuario } from '../../entities/all';
 
 export default function DocumentosTab({
   empreendimento,
+  disciplinas = [],
   isActive = false
 }) {
   const [usuarios, setUsuarios] = useState([]);
@@ -324,6 +325,7 @@ export default function DocumentosTab({
           <DocumentoForm
             documento={editingDocumento}
             empreendimento={empreendimento}
+            disciplinas={disciplinas}
             onSave={handleSalvarDocumento}
             onClose={() => {
               setShowForm(false);

@@ -1,4 +1,3 @@
-// Carrega variáveis de ambiente do .env apenas em desenvolvimento
 if (process.env.NODE_ENV !== 'production') {
   try {
     require('dotenv').config();
@@ -17,11 +16,13 @@ const app = express();
 
 // Middleware para interpretar JSONw
 app.use(express.json());
+
 // Libera CORS para o frontend
 const isProd = process.env.NODE_ENV === 'production';
 const isCloud = Boolean(process.env.RENDER_EXTERNAL_URL || process.env.RENDER || process.env.RENDER_SERVICE_ID);
 const PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || (PUBLIC_URL ? PUBLIC_URL : 'http://localhost:3000');
+
 // Preferir RENDER_EXTERNAL_URL em ambientes de cloud para evitar inconsistências
 let SERVER_URL = (PUBLIC_URL ? PUBLIC_URL : `http://localhost:${process.env.SERVER_PORT || process.env.PORT || 3001}`);
 if (!isCloud && process.env.SERVER_URL) {

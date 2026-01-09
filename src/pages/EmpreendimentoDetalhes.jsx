@@ -317,6 +317,7 @@ const EmpreendimentoDetalhes = () => {
           {activeTab === 'documentos' && (
             <DocumentosTab
               empreendimento={empreendimento}
+              disciplinas={disciplinas}
               documentos={documentosState}
               isActive={activeTab === 'documentos'}
             />
