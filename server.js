@@ -1,4 +1,9 @@
-require('dotenv').config();
+// Carrega variáveis de ambiente do .env apenas em desenvolvimento
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    require('dotenv').config();
+  } catch (_) { /* ignore */ }
+}
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
@@ -41,6 +46,7 @@ try {
   console.log('[ENV] FRONTEND_URL:', FRONTEND_URL);
   console.log('[ENV] GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID || 'undefined');
   console.log('[ENV] GOOGLE_CLIENT_SECRET (masked):', secretMasked);
+  console.log('[ENV] GOOGLE_CALLBACK_URL (computed):', (process.env.GOOGLE_CALLBACK_URL || 'will compute after SERVER_URL init'));
 } catch (_) { }
 
 app.use(cors({

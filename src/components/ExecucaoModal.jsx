@@ -1,5 +1,4 @@
 import { getApiBase } from '../utils/apiBase'
-
 import React, { useEffect, useState, useMemo } from "react";
 import { Execucao, PlanejamentoAtividade, PlanejamentoDocumento } from '../entities/all';
 import FinalizarExecucaoModal from './modals/FinalizarExecucaoModal';

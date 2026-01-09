@@ -1,6 +1,6 @@
 import { getApiBase } from '../utils/apiBase'
-const API_BASE = getApiBase();
 import { Pool } from 'pg';
+const API_BASE = getApiBase();
 
 const pool = new Pool({
   user: 'Interativa', // Substitua pelo seu usuário do PostgreSQL
