@@ -2487,18 +2487,28 @@ app.post('/api/Atividades', async (req, res) => {
 
     const client = await pool.connect();
     try {
-      // Levanta colunas disponíveis na tabela (case-insensitive)
+      // Levanta colunas disponíveis e seus tipos
       const colsResult = await client.query(
-        `SELECT lower(column_name) AS column_name FROM information_schema.columns
+        `SELECT lower(column_name) AS column_name, data_type
+         FROM information_schema.columns
          WHERE table_schema = 'public' AND lower(table_name) = lower('Atividade')`
       );
-      const available = new Set(colsResult.rows.map(r => r.column_name));
+      const available = new Map(colsResult.rows.map(r => [r.column_name, r.data_type]));
 
       // Mapeia de forma resiliente para diferentes esquemas
       const row = {};
 
       // Identificador externo da atividade
-      if (available.has('id_atividade')) row['id_atividade'] = id_atividade || null;
+      if (available.has('id_atividade')) {
+        const t = available.get('id_atividade');
+        if (/int|numeric|double|real/i.test(t)) row['id_atividade'] = id_atividade != null && id_atividade !== '' ? Number(id_atividade) : null;
+        else if (/bit/i.test(t)) {
+          // evita inserir strings em colunas bit
+          row['id_atividade'] = null;
+        } else {
+          row['id_atividade'] = id_atividade || null;
+        }
+      }
 
       // Campos de classificação
       if (available.has('etapa')) row['etapa'] = etapa || '';
@@ -2512,26 +2522,58 @@ app.post('/api/Atividades', async (req, res) => {
       else if (available.has('descricao')) row['descricao'] = texto;
 
       // Dependência/predecessora
-      if (available.has('predecessora')) row['predecessora'] = predecessora || null;
+      if (available.has('predecessora')) {
+        const t = available.get('predecessora');
+        if (/bit/i.test(t)) {
+          // Não forçar valores inválidos para bit: só 0/1
+          const v = String(predecessora || '').trim();
+          row['predecessora'] = v === '1' ? '1' : v === '0' ? '0' : null;
+        } else if (/int|numeric|double|real/i.test(t)) {
+          row['predecessora'] = predecessora != null && predecessora !== '' ? Number(predecessora) : null;
+        } else {
+          row['predecessora'] = predecessora || null;
+        }
+      }
 
       // Duração/tempo (compatível com 'tempo' ou 'duracao_padrao')
-      const tempoNum = (tempo !== undefined && tempo !== null) ? Number(tempo) : 0;
-      if (available.has('tempo')) row['tempo'] = isFinite(tempoNum) ? tempoNum : 0;
-      else if (available.has('duracao_padrao')) row['duracao_padrao'] = isFinite(tempoNum) ? tempoNum : 0;
+      const tempoNum = (tempo !== undefined && tempo !== null && String(tempo).trim() !== '') ? Number(tempo) : 0;
+      if (available.has('tempo')) {
+        const t = available.get('tempo');
+        if (/int|numeric|double|real/i.test(t)) {
+          row['tempo'] = isFinite(tempoNum) ? tempoNum : 0;
+        } else if (/bit/i.test(t)) {
+          // Se a coluna 'tempo' for bit, usar 'duracao_padrao' se existir numérico, senão mapear para 0/1 conservadoramente
+          if (available.has('duracao_padrao') && /int|numeric|double|real/i.test(available.get('duracao_padrao'))) {
+            row['duracao_padrao'] = isFinite(tempoNum) ? tempoNum : 0;
+          } else {
+            row['tempo'] = tempoNum > 0 ? '1' : '0';
+          }
+        } else {
+          row['tempo'] = isFinite(tempoNum) ? tempoNum : 0;
+        }
+      } else if (available.has('duracao_padrao')) {
+        row['duracao_padrao'] = isFinite(tempoNum) ? tempoNum : 0;
+      }
 
       // Função responsável
       if (available.has('funcao')) row['funcao'] = funcao || '';
 
       // Escopo de projeto
       if (available.has('empreendimento_id')) {
-        row['empreendimento_id'] = empreendimento_id ? parseInt(empreendimento_id) : null;
+        const t = available.get('empreendimento_id');
+        row['empreendimento_id'] = (empreendimento_id != null && empreendimento_id !== '')
+          ? (/int|numeric|double|real/i.test(t) ? parseInt(empreendimento_id) : String(empreendimento_id))
+          : null;
       }
 
       // Origem (catálogo/projeto)
       if (available.has('origem')) row['origem'] = origem ?? null;
 
       // Campos comuns opcionais que podem existir no schema legado
-      if (available.has('ativo') && row['ativo'] === undefined) row['ativo'] = true;
+      if (available.has('ativo') && row['ativo'] === undefined) {
+        const t = available.get('ativo');
+        if (/bit/i.test(t)) row['ativo'] = '1'; else row['ativo'] = true;
+      }
       if (available.has('categoria') && row['categoria'] === undefined) row['categoria'] = null;
 
       const columns = Object.keys(row).map(c => `"${c}"`);
