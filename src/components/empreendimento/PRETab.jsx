@@ -275,7 +275,14 @@ export default function PRETab({ empreendimentoId }) {
     try {
       const savedItems = [];
 
+      // Helper: converter dataURL para Blob
+      const dataUrlToBlob = async (dataUrl) => {
+        const res = await fetch(dataUrl);
+        return await res.blob();
+      };
+
       for (const item of items) {
+        // Monta dados SEM imagens (imagens serão tratadas separadamente)
         const itemData = {
           empreendimento_id: empreendimentoId,
           item: item.item,
@@ -286,17 +293,38 @@ export default function PRETab({ empreendimentoId }) {
           assunto: item.assunto,
           comentario: item.comentario,
           status: item.status || '',
-          resposta: item.resposta,
-          imagens: item.imagens || []
+          resposta: item.resposta
         };
 
-        if (item.isNew || item.id.toString().startsWith('temp-')) {
+        let persisted;
+        const isTemp = item.isNew || item.id?.toString?.().startsWith('temp-');
+        if (isTemp) {
+          // Cria sem imagens
           const created = await retryWithBackoff(() => ItemPRE.create(itemData), 3, 2000, 'PRE-Create');
-          savedItems.push(created);
+          persisted = created;
+          // Envia imagens (se existirem) após criar
+          const imgs = Array.isArray(item.imagens) ? item.imagens : [];
+          let imagensServidor = Array.isArray(created.imagens) ? created.imagens : [];
+          for (const img of imgs) {
+            if (typeof img === 'string' && img.startsWith('data:')) {
+              const blob = await dataUrlToBlob(img);
+              const form = new FormData();
+              form.append('image', blob, 'anexo.png');
+              const resp = await fetch(`/api/PRE/${created.id}/imagens`, { method: 'POST', body: form });
+              if (resp.ok) {
+                const data = await resp.json();
+                imagensServidor = data?.imagens || imagensServidor;
+              }
+            }
+          }
+          persisted = { ...persisted, imagens: imagensServidor };
         } else {
+          // Atualiza campos textuais; imagens são gerenciadas via upload dedicado
           const updated = await retryWithBackoff(() => ItemPRE.update(item.id, itemData), 3, 2000, `PRE-Update-${item.id}`);
-          savedItems.push(updated);
+          persisted = { ...updated, imagens: item.imagens || updated.imagens || [] };
         }
+
+        savedItems.push(persisted);
       }
 
       const normalized = savedItems.map((it) => ({

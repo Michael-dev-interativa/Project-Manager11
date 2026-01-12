@@ -21,8 +21,9 @@ const upload = multer({
 const app = express();
 
 
-// Middleware para interpretar JSONw
-app.use(express.json());
+// Middleware para interpretar JSON com limite maior (evita 413 em cargas legítimas)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Libera CORS para o frontend
 const isProd = process.env.NODE_ENV === 'production';
