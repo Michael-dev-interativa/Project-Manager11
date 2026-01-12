@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Printer, Save, FileText, Loader2, Upload, Image as ImageIcon, X } from "lucide-react";
 import { Empreendimento, ItemPRE } from "@/entities/all";
-import { format } from "date-fns";
+import { format, parseISO, isValid as isValidDate } from "date-fns";
 import { retryWithBackoff } from "@/components/utils/apiUtils";
 
 
@@ -121,6 +121,16 @@ export default function PRETab({ empreendimentoId }) {
     }
   };
 
+  const normalizeDate = (value) => {
+    if (!value) return '';
+    try {
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+      const d = typeof value === 'string' ? parseISO(value) : new Date(value);
+      if (isValidDate(d)) return format(d, 'yyyy-MM-dd');
+    } catch (_) { }
+    return '';
+  };
+
   const loadItems = async (empId) => {
     setIsLoading(true);
     try {
@@ -129,7 +139,11 @@ export default function PRETab({ empreendimentoId }) {
         3, 2000,
         'PRE-Items'
       );
-      const sortedItems = (itemsList || []).sort((a, b) => {
+      const normalized = (itemsList || []).map((it) => ({
+        ...it,
+        data: normalizeDate(it.data)
+      }));
+      const sortedItems = normalized.sort((a, b) => {
         const parseItem = (str) => {
           const parts = String(str).split('.');
           return parts.map(p => parseInt(p) || 0);
@@ -146,7 +160,8 @@ export default function PRETab({ empreendimentoId }) {
       setItems(sortedItems);
     } catch (error) {
       console.error('Erro ao carregar itens:', error);
-      setItems([]);
+      // Não apaga o estado atual em caso de falha de backend
+      // Mantém itens já exibidos para evitar "sumir" após salvar
     } finally {
       setIsLoading(false);
     }
@@ -250,7 +265,11 @@ export default function PRETab({ empreendimentoId }) {
         }
       }
 
-      const sortedSavedItems = savedItems.sort((a, b) => {
+      const normalized = savedItems.map((it) => ({
+        ...it,
+        data: normalizeDate(it.data)
+      }));
+      const sortedSavedItems = normalized.sort((a, b) => {
         const parseItem = (str) => {
           const parts = String(str).split('.');
           return parts.map(p => parseInt(p) || 0);
@@ -264,7 +283,7 @@ export default function PRETab({ empreendimentoId }) {
         }
         return 0;
       });
-      setItems(sortedSavedItems);
+      if (sortedSavedItems.length > 0) setItems(sortedSavedItems);
       alert('Dados salvos com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar:', error);
