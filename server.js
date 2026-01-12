@@ -10,6 +10,13 @@ const { Pool } = require('pg');
 const session = require('express-session');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const multer = require('multer');
+
+// Configuração de upload em memória (armazenaremos como base64 no banco)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
 
 const app = express();
 
@@ -3477,6 +3484,40 @@ app.delete('/api/PRE/:id', async (req, res) => {
   } catch (error) {
     console.error('[PRE] Erro ao deletar:', error);
     res.status(500).json({ error: 'Erro ao deletar PRE', details: error.message });
+  }
+});
+
+// Upload de imagem para um item PRE (armazena como dataURL em JSONB)
+app.post('/api/PRE/:id/imagens', upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.file) {
+      return res.status(400).json({ error: 'Arquivo de imagem é obrigatório (campo image)' });
+    }
+
+    const mime = req.file.mimetype || 'application/octet-stream';
+    if (!/^image\//.test(mime)) {
+      return res.status(400).json({ error: 'Apenas arquivos de imagem são permitidos' });
+    }
+
+    const base64 = req.file.buffer.toString('base64');
+    const dataUrl = `data:${mime};base64,${base64}`;
+
+    // Busca imagens atuais
+    const sel = await pool.query('SELECT imagens FROM public."PRE" WHERE id = $1', [parseInt(id)]);
+    if (sel.rows.length === 0) return res.status(404).json({ error: 'PRE não encontrado' });
+    const current = Array.isArray(sel.rows[0].imagens) ? sel.rows[0].imagens : [];
+    const updated = [...current, dataUrl];
+
+    const upd = await pool.query(
+      'UPDATE public."PRE" SET imagens = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING imagens',
+      [JSON.stringify(updated), parseInt(id)]
+    );
+
+    return res.status(200).json({ imagens: upd.rows[0].imagens });
+  } catch (error) {
+    console.error('[PRE] Erro no upload de imagem:', error);
+    return res.status(500).json({ error: 'Erro ao enviar imagem', details: error.message });
   }
 });
 

@@ -213,14 +213,48 @@ export default function PRETab({ empreendimentoId }) {
   };
 
   const handleUploadImage = async (itemId, file) => {
-    // TODO: Implementar upload de imagem para o backend
-    alert('Upload de imagem não implementado.');
-    // Exemplo de como adicionar uma URL fake para teste visual:
-    // setItems(prev => prev.map(item => 
-    //   item.id === itemId 
-    //     ? { ...item, imagens: [...(item.imagens || []), URL.createObjectURL(file)] } 
-    //     : item
-    // ));
+    try {
+      // Se o item ainda não existe no banco, anexamos localmente como dataURL
+      if (String(itemId).startsWith('temp-')) {
+        const toDataUrl = (f) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(f);
+        });
+        const dataUrl = await toDataUrl(file);
+        setItems(prev => prev.map(item =>
+          item.id === itemId
+            ? { ...item, imagens: [...(item.imagens || []), dataUrl] }
+            : item
+        ));
+        return;
+      }
+
+      // Para itens já persistidos, envia para o backend
+      const form = new FormData();
+      form.append('image', file);
+
+      const resp = await fetch(`/api/PRE/${itemId}/imagens`, {
+        method: 'POST',
+        body: form
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Falha no upload');
+      }
+      const data = await resp.json();
+      const novasImagens = data?.imagens || [];
+      setItems(prev => prev.map(item =>
+        item.id === itemId
+          ? { ...item, imagens: novasImagens }
+          : item
+      ));
+    } catch (e) {
+      console.error('Upload de imagem falhou:', e);
+      alert('Erro ao enviar imagem. Tente novamente.');
+    }
   };
 
   const handleRemoveImage = (itemId, imageUrl) => {
