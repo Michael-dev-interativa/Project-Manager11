@@ -55,11 +55,26 @@ const EmpreendimentoDetalhes = () => {
           erros.push(`Linha ${i + 1}: Número e Arquivo são obrigatórios`);
           continue;
         }
+        // Normalizar subdisciplinas: aceitar 'subdisciplinas' (lista) ou 'subdisciplina' (string)
+        let subdisciplinasArray = [];
+        const rawSubs = row.subdisciplinas || row.subdisciplina || '';
+        if (rawSubs) {
+          let parsed = null;
+          if (/^\s*\[.*\]\s*$/.test(rawSubs)) {
+            try { parsed = JSON.parse(rawSubs); } catch { parsed = null; }
+          }
+          if (Array.isArray(parsed)) {
+            subdisciplinasArray = parsed.map(s => String(s).trim()).filter(Boolean);
+          } else {
+            subdisciplinasArray = String(rawSubs).split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+          }
+        }
         documentosParaImportar.push({
           numero: row.numero,
           arquivo: row.arquivo,
           descritivo: row.descritivo || '',
           disciplina: row.disciplina || '',
+          subdisciplinas: subdisciplinasArray,
           escala: row.escala ? String(row.escala) : '',
           fator_dificuldade: row.fator_dificuldade ? parseFloat(row.fator_dificuldade) : 1,
           empreendimento_id: id,

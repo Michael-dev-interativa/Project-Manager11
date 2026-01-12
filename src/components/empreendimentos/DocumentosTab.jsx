@@ -211,9 +211,9 @@ export default function DocumentosTab({
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Número</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Arquivo</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Descritivo</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Disciplina</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subdisciplina</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Escala</th>
-              {/* <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Disciplina</th> */}
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Executor</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Datas</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tempo</th>
@@ -248,9 +248,9 @@ export default function DocumentosTab({
                     <td className="px-4 py-2 font-semibold text-gray-900">{documento.numero}</td>
                     <td className="px-4 py-2 text-gray-700">{documento.arquivo}</td>
                     <td className="px-4 py-2 text-gray-700">{documento.descritivo || '—'}</td>
+                    <td className="px-4 py-2 text-gray-700">{documento.disciplina || '—'}</td>
                     <td className="px-4 py-2 text-gray-700">{documento.subdisciplina || documento.subdisciplinas || '—'}</td>
                     <td className="px-4 py-2 text-gray-700">{documento.escala || '—'}</td>
-                    {/* <td className="px-4 py-2 text-gray-700">{documento.disciplina}</td> */}
                     <td className="px-4 py-2 text-gray-700">{documento.executor_principal || '—'}</td>
                     <td className="px-4 py-2 text-gray-700">
                       {formatDate(documento.inicio_planejado)}<br />{formatDate(documento.termino_planejado)}
