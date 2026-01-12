@@ -55,7 +55,13 @@ export default function DocumentoForm({
         descritivo: currentDoc.descritivo || "",
         pavimento_id: currentDoc.pavimento_id || null,
         disciplina: currentDoc.disciplina || "",
-        subdisciplinas: Array.isArray(currentDoc.subdisciplinas) ? currentDoc.subdisciplinas : (currentDoc.subdisciplinas ? String(currentDoc.subdisciplinas).split(',').map(s => s.trim()).filter(Boolean) : []),
+        subdisciplinas: Array.isArray(currentDoc.subdisciplinas)
+          ? currentDoc.subdisciplinas
+          : (currentDoc.subdisciplinas
+            ? String(currentDoc.subdisciplinas).split(',').map(s => s.trim()).filter(Boolean)
+            : (currentDoc.subdisciplina
+              ? String(currentDoc.subdisciplina).split(',').map(s => s.trim()).filter(Boolean)
+              : [])),
         escala: currentDoc.escala || "",
         fator_dificuldade: currentDoc.fator_dificuldade || 1,
         tempo_total: currentDoc.tempo_total || 0,

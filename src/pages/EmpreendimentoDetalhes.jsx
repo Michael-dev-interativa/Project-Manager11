@@ -48,8 +48,11 @@ const EmpreendimentoDetalhes = () => {
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(separator).map(v => v.trim());
         const row = {};
+        const rowLower = {};
         headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
+          const val = values[idx] || '';
+          row[header] = val;
+          rowLower[header.toLowerCase()] = val;
         });
         if (!row.numero || !row.arquivo) {
           erros.push(`Linha ${i + 1}: Número e Arquivo são obrigatórios`);
@@ -57,7 +60,7 @@ const EmpreendimentoDetalhes = () => {
         }
         // Normalizar subdisciplinas: aceitar 'subdisciplinas' (lista) ou 'subdisciplina' (string)
         let subdisciplinasArray = [];
-        const rawSubs = row.subdisciplinas || row.subdisciplina || '';
+        const rawSubs = row.subdisciplinas || row.subdisciplina || rowLower['subdisciplinas'] || rowLower['subdisciplina'] || '';
         if (rawSubs) {
           let parsed = null;
           if (/^\s*\[.*\]\s*$/.test(rawSubs)) {
@@ -73,7 +76,7 @@ const EmpreendimentoDetalhes = () => {
           numero: row.numero,
           arquivo: row.arquivo,
           descritivo: row.descritivo || '',
-          disciplina: row.disciplina || '',
+          disciplina: row.disciplina || rowLower['disciplina'] || '',
           subdisciplinas: subdisciplinasArray,
           escala: row.escala ? String(row.escala) : '',
           fator_dificuldade: row.fator_dificuldade ? parseFloat(row.fator_dificuldade) : 1,
