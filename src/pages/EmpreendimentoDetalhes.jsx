@@ -6,7 +6,6 @@ import DocumentosTab from "../components/empreendimentos/DocumentosTab";
 import PavimentosTab from "../components/empreendimento/PavimentosTab";
 import AtividadesProjetoTab from "../components/empreendimento/AtividadesProjetoTab";
 import AnaliticoGlobalTab from "../components/empreendimento/AnaliticoGlobalTab";
-import AnaliseEtapasTab from "../components/empreendimento/AnaliseEtapasTab";
 import GestaoTab from "../components/empreendimento/GestaoTab";
 import DocumentacaoTab from "../components/empreendimento/DocumentacaoTab";
 import { Empreendimento, Usuario, Documento, Atividade, Disciplina, PlanejamentoAtividade, PlanejamentoDocumento, Execucao } from "../entities/all";
@@ -391,9 +390,6 @@ const EmpreendimentoDetalhes = () => {
           )}
           {activeTab === 'pre' && (
             <PRETab empreendimentoId={empreendimento?.id} />
-          )}
-          {activeTab === 'etapas' && (
-            <AnaliseEtapasTab planejamentos={empreendimento?.planejamentos || []} />
           )}
         </div>
       </div>
