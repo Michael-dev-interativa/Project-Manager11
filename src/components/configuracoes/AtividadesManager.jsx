@@ -376,84 +376,108 @@ export default function AtividadesManager({ atividades, disciplinas, isLoading, 
                 onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                 className="mb-4 w-full"
               />
-              <div className="flex gap-2 justify-end">
-                <button className="px-4 py-2 rounded border bg-gray-100" onClick={() => setShowImport(false)} disabled={isImporting}>
-                  Cancelar
-                </button>
+              <div className="flex gap-2 justify-between items-center">
                 <button
-                  className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 flex items-center gap-2"
+                  type="button"
+                  className="px-3 py-2 rounded border text-gray-700 hover:bg-gray-50"
                   onClick={async () => {
-                    if (!importFile) {
-                      alert('Selecione um arquivo para importar');
-                      return;
-                    }
-                    setIsImporting(true);
                     try {
                       const XLSX = await import('xlsx');
-                      let rows = [];
-                      if (importFile.name.toLowerCase().endsWith('.csv')) {
-                        const text = await importFile.text();
-                        const lines = text.split('\n').filter(l => l.trim());
-                        const sep = lines[0]?.includes(';') ? ';' : ',';
-                        const headers = lines[0].split(sep).map(h => h.trim());
-                        for (let i = 1; i < lines.length; i++) {
-                          const values = lines[i].split(sep).map(v => v.trim());
-                          const row = {};
-                          headers.forEach((h, idx) => row[h] = values[idx] || '');
-                          rows.push(row);
-                        }
-                      } else {
-                        const data = await importFile.arrayBuffer();
-                        const wb = XLSX.read(data, { type: 'array' });
-                        const sheetName = wb.SheetNames[0];
-                        const sheet = wb.Sheets[sheetName];
-                        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-                      }
-
-                      const normalized = rows.map(r => ({
-                        id_atividade: r.id_atividade ?? r.id ?? r.codigo ?? '',
-                        etapa: r.etapa ?? r.fase ?? '',
-                        disciplina: r.disciplina ?? '',
-                        subdisciplina: r.subdisciplina ?? r.sub_disciplina ?? '',
-                        atividade: r.atividade ?? r.descricao ?? r.nome ?? '',
-                        predecessora: r.predecessora ?? r.predecessor ?? r.depende ?? '',
-                        tempo: r.tempo ?? r.duracao ?? r['duração'] ?? r.horas ?? 0,
-                        funcao: r.funcao ?? r['função'] ?? ''
-                      }));
-
-                      let sucessos = 0, falhas = 0;
-                      for (const r of normalized) {
-                        try {
-                          const payload = {
-                            ...r,
-                            tempo: r.tempo ? parseFloat(r.tempo) : 0,
-                            origem: 'catalogo',
-                            empreendimento_id: null
-                          };
-                          await retryWithBackoff(() => Atividade.create(payload), 3, 500, 'importAtividadeCatalogo');
-                          sucessos++;
-                        } catch (e) {
-                          falhas++;
-                        }
-                      }
-                      alert(`Importação concluída!\n\nSucessos: ${sucessos}\nFalhas: ${falhas}`);
-                      setShowImport(false);
-                      onUpdate && onUpdate();
-                    } catch (err) {
-                      alert(`Erro ao processar arquivo: ${err.message}`);
-                    } finally {
-                      setIsImporting(false);
+                      const headers = ['id_atividade', 'etapa', 'disciplina', 'subdisciplina', 'atividade', 'predecessora', 'tempo', 'funcao'];
+                      const sample = [
+                        ['A-001', 'Planejamento', 'Elétrica', 'Instalação', 'Levantamento das premissas', '', 2, 'Projetista']
+                      ];
+                      const aoa = [headers, ...sample];
+                      const ws = XLSX.utils.aoa_to_sheet(aoa);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Atividades');
+                      XLSX.writeFile(wb, 'template_atividades.xlsx');
+                    } catch (e) {
+                      alert('Não foi possível gerar o template: ' + e.message);
                     }
                   }}
-                  disabled={!importFile || isImporting}
                 >
-                  {isImporting ? 'Importando...' : 'Importar'}
+                  Baixar Template
                 </button>
+
+                <div className="flex gap-2">
+                  <button className="px-4 py-2 rounded border bg-gray-100" onClick={() => setShowImport(false)} disabled={isImporting}>
+                    Cancelar
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 flex items-center gap-2"
+                    onClick={async () => {
+                      if (!importFile) {
+                        alert('Selecione um arquivo para importar');
+                        return;
+                      }
+                      setIsImporting(true);
+                      try {
+                        const XLSX = await import('xlsx');
+                        let rows = [];
+                        if (importFile.name.toLowerCase().endsWith('.csv')) {
+                          const text = await importFile.text();
+                          const lines = text.split('\n').filter(l => l.trim());
+                          const sep = lines[0]?.includes(';') ? ';' : ',';
+                          const headers = lines[0].split(sep).map(h => h.trim());
+                          for (let i = 1; i < lines.length; i++) {
+                            const values = lines[i].split(sep).map(v => v.trim());
+                            const row = {};
+                            headers.forEach((h, idx) => row[h] = values[idx] || '');
+                            rows.push(row);
+                          }
+                        } else {
+                          const data = await importFile.arrayBuffer();
+                          const wb = XLSX.read(data, { type: 'array' });
+                          const sheetName = wb.SheetNames[0];
+                          const sheet = wb.Sheets[sheetName];
+                          rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                        }
+
+                        const normalized = rows.map(r => ({
+                          id_atividade: r.id_atividade ?? r.id ?? r.codigo ?? '',
+                          etapa: r.etapa ?? r.fase ?? '',
+                          disciplina: r.disciplina ?? '',
+                          subdisciplina: r.subdisciplina ?? r.sub_disciplina ?? '',
+                          atividade: r.atividade ?? r.descricao ?? r.nome ?? '',
+                          predecessora: r.predecessora ?? r.predecessor ?? r.depende ?? '',
+                          tempo: r.tempo ?? r.duracao ?? r['duração'] ?? r.horas ?? 0,
+                          funcao: r.funcao ?? r['função'] ?? ''
+                        }));
+
+                        let sucessos = 0, falhas = 0;
+                        for (const r of normalized) {
+                          try {
+                            const payload = {
+                              ...r,
+                              tempo: r.tempo ? parseFloat(r.tempo) : 0,
+                              origem: 'catalogo',
+                              empreendimento_id: null
+                            };
+                            await retryWithBackoff(() => Atividade.create(payload), 3, 500, 'importAtividadeCatalogo');
+                            sucessos++;
+                          } catch (e) {
+                            falhas++;
+                          }
+                        }
+                        alert(`Importação concluída!\n\nSucessos: ${sucessos}\nFalhas: ${falhas}`);
+                        setShowImport(false);
+                        onUpdate && onUpdate();
+                      } catch (err) {
+                        alert(`Erro ao processar arquivo: ${err.message}`);
+                      } finally {
+                        setIsImporting(false);
+                      }
+                    }}
+                    disabled={!importFile || isImporting}
+                  >
+                    {isImporting ? 'Importando...' : 'Importar'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
         )}
-      </div>
+          </div>
     </div >
-  );
+      );
 }
