@@ -2356,6 +2356,19 @@ async function getColumnDataType(tableName, columnName) {
     return null;
   }
 }
+
+// Definir endpoint de colunas ANTES do matcher '/api/Atividades/:id' para evitar conflito
+app.get('/api/Atividades/columns', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND lower(table_name) = lower('Atividade') ORDER BY ordinal_position;
+    `);
+    res.json(result.rows.map(r => r.column_name));
+  } catch (error) {
+    console.error('Erro ao listar colunas de Atividade:', error);
+    res.status(500).json({ error: 'Erro interno' });
+  }
+});
 app.get('/api/Atividades', async (req, res) => {
   try {
     const { empreendimento_id } = req.query;
@@ -2440,9 +2453,10 @@ app.get('/api/Atividades', async (req, res) => {
   }
 });
 
-app.get('/api/Atividades/:id', async (req, res) => {
+app.get('/api/Atividades/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (String(id).toLowerCase() === 'columns') return next();
     const pk = await getPrimaryKeyColumn('Atividade');
     const searchValue = (pk === 'id') ? parseInt(id) : id;
     const result = await pool.query(`SELECT * FROM public."Atividade" WHERE "${pk}" = $1`, [searchValue]);
@@ -2456,48 +2470,87 @@ app.get('/api/Atividades/:id', async (req, res) => {
 
 app.post('/api/Atividades', async (req, res) => {
   try {
-    const data = req.body;
+    const data = req.body || {};
     const {
-      id_atividade, etapa, disciplina, subdisciplina, atividade: descricao, predecessora, tempo, funcao, empreendimento_id, origem
+      id_atividade,
+      etapa,
+      disciplina,
+      subdisciplina,
+      atividade: atividadeInput,
+      descricao: descricaoInput,
+      predecessora,
+      tempo,
+      funcao,
+      empreendimento_id,
+      origem
     } = data;
+
     const client = await pool.connect();
     try {
-      const fieldMap = {
-        id_atividade: id_atividade || null,
-        etapa: etapa || '',
-        disciplina: disciplina || '',
-        subdisciplina: subdisciplina || '',
-        atividade: descricao || '',
-        predecessora: predecessora || null,
-        tempo: tempo ?? 0,
-        funcao: funcao || '',
-        empreendimento_id: empreendimento_id ? parseInt(empreendimento_id) : null,
-        origem: origem ?? null
-      };
-      const columns = [];
-      const placeholders = [];
-      const values = [];
-      let idx = 1;
-      for (const col of Object.keys(fieldMap)) {
-        if (await hasColumn('Atividade', col)) {
-          columns.push(`"${col}"`);
-          placeholders.push(`$${idx}`);
-          values.push(fieldMap[col]);
-          idx++;
-        }
+      // Levanta colunas disponíveis na tabela (case-insensitive)
+      const colsResult = await client.query(
+        `SELECT lower(column_name) AS column_name FROM information_schema.columns
+         WHERE table_schema = 'public' AND lower(table_name) = lower('Atividade')`
+      );
+      const available = new Set(colsResult.rows.map(r => r.column_name));
+
+      // Mapeia de forma resiliente para diferentes esquemas
+      const row = {};
+
+      // Identificador externo da atividade
+      if (available.has('id_atividade')) row['id_atividade'] = id_atividade || null;
+
+      // Campos de classificação
+      if (available.has('etapa')) row['etapa'] = etapa || '';
+      if (available.has('disciplina')) row['disciplina'] = disciplina || '';
+      if (available.has('subdisciplina')) row['subdisciplina'] = subdisciplina || '';
+
+      // Descrição/nome da atividade: aceita 'atividade' (novo) ou 'nome'/'descricao' (legado)
+      const texto = atividadeInput || descricaoInput || '';
+      if (available.has('atividade')) row['atividade'] = texto;
+      else if (available.has('nome')) row['nome'] = texto;
+      else if (available.has('descricao')) row['descricao'] = texto;
+
+      // Dependência/predecessora
+      if (available.has('predecessora')) row['predecessora'] = predecessora || null;
+
+      // Duração/tempo (compatível com 'tempo' ou 'duracao_padrao')
+      const tempoNum = (tempo !== undefined && tempo !== null) ? Number(tempo) : 0;
+      if (available.has('tempo')) row['tempo'] = isFinite(tempoNum) ? tempoNum : 0;
+      else if (available.has('duracao_padrao')) row['duracao_padrao'] = isFinite(tempoNum) ? tempoNum : 0;
+
+      // Função responsável
+      if (available.has('funcao')) row['funcao'] = funcao || '';
+
+      // Escopo de projeto
+      if (available.has('empreendimento_id')) {
+        row['empreendimento_id'] = empreendimento_id ? parseInt(empreendimento_id) : null;
       }
+
+      // Origem (catálogo/projeto)
+      if (available.has('origem')) row['origem'] = origem ?? null;
+
+      // Campos comuns opcionais que podem existir no schema legado
+      if (available.has('ativo') && row['ativo'] === undefined) row['ativo'] = true;
+      if (available.has('categoria') && row['categoria'] === undefined) row['categoria'] = null;
+
+      const columns = Object.keys(row).map(c => `"${c}"`);
+      const placeholders = Object.keys(row).map((_, i) => `$${i + 1}`);
+      const values = Object.values(row);
+
       if (columns.length === 0) {
-        throw new Error('Nenhuma coluna válida encontrada na tabela Atividade para inserção');
+        throw new Error('Nenhuma coluna compatível encontrada na tabela Atividade para inserção');
       }
+
       const sql = `INSERT INTO public."Atividade" (${columns.join(',')}) VALUES (${placeholders.join(',')}) RETURNING *`;
       const result = await client.query(sql, values);
-      res.status(201).json(result.rows[0]);
+      return res.status(201).json(result.rows[0]);
     } finally {
       client.release();
     }
   } catch (error) {
     console.error('Erro ao criar atividade:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ error: 'Erro interno do servidor', details: error.message });
   }
 });
 
