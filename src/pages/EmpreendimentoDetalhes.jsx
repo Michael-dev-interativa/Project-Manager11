@@ -302,8 +302,8 @@ const EmpreendimentoDetalhes = () => {
                 Gestão
               </button>
               <button
-                onClick={() => setActiveTab('etapas')}
-                className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'etapas'
+                onClick={() => setActiveTab('pre')}
+                className={`py-1.5 px-3 border-b-2 font-medium text-sm ${activeTab === 'pre'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
