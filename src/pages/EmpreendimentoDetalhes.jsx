@@ -388,7 +388,7 @@ const EmpreendimentoDetalhes = () => {
               onUpdate={() => { }}
             />
           )}
-          {activeTab === 'pre' && (
+          {(activeTab === 'pre' || activeTab === 'etapas') && (
             <PRETab empreendimentoId={empreendimento?.id} />
           )}
         </div>
